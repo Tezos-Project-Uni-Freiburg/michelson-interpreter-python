@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 import json
 import re
-import ast
 import subprocess
 import sys
 
@@ -26,6 +25,10 @@ def michelson_interpreter(script, parameter, storage, state):
         stdin=script,
     )
     s = json.loads(re.sub(r"\\\\\"", '\\"', s_raw.stdout).strip()[1:-1])
+    if len(s) > 1:
+        raise Exception("Multiple parsings!")
+    s = json.loads(s[0])
+
 
 if __name__ == "__main__":
     with open(sys.argv[1]) as f:
