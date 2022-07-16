@@ -1,5 +1,7 @@
 #!/usr/bin/python3
-import pprint
+import json
+import re
+import ast
 import subprocess
 import sys
 
@@ -17,14 +19,13 @@ sys.excepthook = excepthook
 
 
 def michelson_interpreter(script, parameter, storage, state):
-    s = subprocess.run(
+    s_raw = subprocess.run(
         ["./ext/michelson-parser-wrapper/bin/michelson-parser.js"],
         capture_output=True,
         encoding="utf-8",
         stdin=script,
     )
-    pprint.pprint(s)
-
+    s = json.loads(re.sub(r"\\\\\"", '\\"', s_raw.stdout).strip()[1:-1])
 
 if __name__ == "__main__":
     with open(sys.argv[1]) as f:
