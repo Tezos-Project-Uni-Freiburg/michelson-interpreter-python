@@ -268,3 +268,19 @@ def get_instruction_requirements(instruction: str) -> Dict[str, bool | List[List
         case _:
             raise CustomException("unknown instruction type " + instruction, [])
     return requirements
+
+
+def process_instruction(
+    instruction: Dict[Any, Any], stack: List[Data]
+) -> Step | None:  # added `| None` to suppress typing error for now
+    if "IF" in instruction["prim"]:
+        globals()["STEPS"].append(Step(Delta([], []), [instruction], stack))
+    removed = []
+    added = []
+    parameters = get_instruction_parameters(
+        get_instruction_requirements(instruction["prim"]), stack
+    )
+    if len(parameters) != 1 or parameters[0] is not None:
+        removed.extend(stack[-len(parameters) :][::-1])
+        assert removed == parameters
+    ...

@@ -18,6 +18,7 @@ def excepthook(type, value, traceback):
 
 sys.excepthook = excepthook
 
+STEPS = []
 
 def michelson_interpreter(
     script: io.TextIOWrapper, parameter: str, storage: str, state: State
