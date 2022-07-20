@@ -35,7 +35,7 @@ def michelson_interpreter(
         raise Exception("Multiple parsings!")
     s = json.loads(s[0])
     p_raw, s_raw, c_raw = s[0], s[1], s[2]
-    pprint.pp(c_raw)
+    pprint.pp(p_raw)
 
 
 if __name__ == "__main__":
