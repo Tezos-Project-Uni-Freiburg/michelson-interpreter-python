@@ -29,12 +29,39 @@ def get_instruction_parameters(
         )
         if req_size > len(stack):
             raise CustomException("not enough elements in the stack", [requirements])
-        ...
+        req_elems = stack[-req_size:][::-1]
+        for i in range(len(requirements["l"])):
+            if all(
+                y == requirements["l"][i][x] or y is not None
+                for x, y in enumerate(
+                    map(lambda x: x.prim, req_elems[: len(requirements["l"][i])])
+                )
+            ):
+                flag = True
+                return req_elems[: len(requirements["l"][i])]
+        if not flag:
+            raise CustomException(
+                "stack elements and opcode req does not match", [requirements]
+            )
     elif requirements["l"][0] is None:
-        ...
+        return [None]
     else:
-        ...
-    return []  # to suppress typing error for now
+        req_size = len(requirements["l"])
+        if req_size > len(stack):
+            raise CustomException("not enough elements in the stack", [requirements])
+        req_elems = stack[-req_size:][::-1]
+        if (
+            all(x == "SAME" for x in requirements["l"])
+            and len({x.prim for x in req_elems}) != 1
+        ):
+            raise CustomException("top elements are not of same type", [requirements])
+        elif all(len(x) > 0 for x in requirements["l"]) and not all(
+            y == req_elems[x].prim for x, y in enumerate(requirements["l"])
+        ):
+            raise CustomException(
+                "stack elements and opcode req does not match", [requirements]
+            )
+    return req_elems
 
 
 def get_instruction_requirements(instruction: str) -> Dict[str, bool | List[List[str]]]:

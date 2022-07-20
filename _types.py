@@ -17,7 +17,7 @@ class Data:
     raw: dict = field(default_factory=dict)
     attributes: list = field(default_factory=list, init=False)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.raw != {}:
             ...
         match self.prim:
