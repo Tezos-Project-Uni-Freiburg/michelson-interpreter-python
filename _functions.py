@@ -275,12 +275,92 @@ def process_instruction(
 ) -> Step | None:  # added `| None` to suppress typing error for now
     if "IF" in instruction["prim"]:
         globals()["STEPS"].append(Step(Delta([], []), [instruction], stack))
-    removed = []
-    added = []
+    removed: List[Data] = []
+    added: List[Data] = []
     parameters = get_instruction_parameters(
         get_instruction_requirements(instruction["prim"]), stack
     )
     if len(parameters) != 1 or parameters[0] is not None:
         removed.extend(stack[-len(parameters) :][::-1])
         assert removed == parameters
-    ...
+
+    result = globals()["apply" + instruction["prim"]](instruction, parameters, stack)
+    if result is not None:
+        if not isinstance(result, list):
+            if hasattr(result, "args") and not hasattr(result, "value"):
+                result["value"] = result["args"]
+                del result["args"]
+            stack.append(result)
+            added.append(result)
+        else:
+            for i in result[::-1]:
+                if hasattr(i, "args") and not hasattr(i, "value"):
+                    i["value"] = i["args"]
+                    del i["args"]
+                stack.append(i)
+                added.append(i)
+    return Step(Delta(removed, added), [instruction], stack)
+
+
+# instruction functions
+
+
+def applyABS(instruction, parameters, stack):
+    return Data("nat", [str(abs(int(parameters[0].value[0])))])
+
+
+def applyADD(instruction, parameters, stack):
+    output = Data("", [str(int(parameters[0].value[0]) + int(parameters[1].value[0]))])
+    match parameters[0].prim:
+        case "nat":
+            output.prim = "nat" if parameters[1].prim is "nat" else "int"
+        case "int":
+            output.prim = "timestamp" if parameters[1].prim is "timestamp" else "int"
+        case "timestamp":
+            output.prim = "timestamp"
+        case "mutez":
+            output.prim = "mutez"
+        case _:
+            raise CustomException(
+                "unexpected prim in applyADD", [instruction, parameters, stack]
+            )
+    return output
+
+
+def applyADDRESS(instruction, parameters, stack):
+    return parameters[0].value[0]
+
+
+def applyAMOUNT(instruction, parameters, stack):
+    return Data("mutez", [str(globals()["CURRENT_STATE"].amount)])
+
+
+def applyAND(instruction, parameters, stack):
+    match parameters[0].prim:
+        case "bool":
+            return Data(
+                "bool",
+                [
+                    str(
+                        parameters[0].value[0].lower() == "true"
+                        and parameters[1].value[0].lower() == "true"
+                    )
+                ],
+            )
+        case "nat" | "int":
+            return Data(
+                "nat", [str(int(parameters[0].value[0]) & int(parameters[1].value[0]))]
+            )
+
+
+def applyAPPLY(instruction, parameters, stack):
+    # Not implemented
+    return Data("lambda", [])
+
+
+def applyBALANCE(instruction, parameters, stack):
+    return Data("mutez", [str(globals()["CURRENT_STATE"].amount)])
+
+
+def apply(instruction, parameters, stack):
+    ...  # template

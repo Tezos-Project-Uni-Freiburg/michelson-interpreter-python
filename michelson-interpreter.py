@@ -5,6 +5,7 @@ import pprint
 import re
 import subprocess
 import sys
+from typing import List
 
 import click
 
@@ -18,14 +19,14 @@ def excepthook(type, value, traceback):
 
 sys.excepthook = excepthook
 
-STEPS = []
+CURRENT_STATE: State = State()
+STEPS: List[Step] = []
 
 
 def michelson_interpreter(
     script: io.TextIOWrapper, parameter: str, storage: str, state: State
 ):
-    global current_state
-    current_state = state
+    CURRENT_STATE = state
     s = subprocess.run(
         ["./ext/michelson-parser-wrapper/bin/michelson-parser.js"],
         capture_output=True,

@@ -58,8 +58,8 @@ class Data:
 
 @dataclass
 class Delta:
-    removed: list = field(default_factory=list)
-    added: list = field(default_factory=list)
+    removed: list[Data] = field(default_factory=list)
+    added: list[Data] = field(default_factory=list)
 
 
 @dataclass
