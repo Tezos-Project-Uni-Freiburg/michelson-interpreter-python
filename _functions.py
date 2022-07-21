@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 
 from functools import reduce
+from hashlib import blake2b
+from types import NoneType
 from typing import Any, Dict, List
 from _types import CustomException, Data, Delta, State, Step
 
@@ -305,11 +307,11 @@ def process_instruction(
 # instruction functions
 
 
-def applyABS(instruction, parameters, stack):
+def applyABS(instruction, parameters, stack) -> Data:
     return Data("nat", [str(abs(int(parameters[0].value[0])))])
 
 
-def applyADD(instruction, parameters, stack):
+def applyADD(instruction, parameters, stack) -> Data:
     output = Data("", [str(int(parameters[0].value[0]) + int(parameters[1].value[0]))])
     match parameters[0].prim:
         case "nat":
@@ -331,11 +333,11 @@ def applyADDRESS(instruction, parameters, stack):
     return parameters[0].value[0]
 
 
-def applyAMOUNT(instruction, parameters, stack):
+def applyAMOUNT(instruction, parameters, stack) -> Data:
     return Data("mutez", [str(globals()["CURRENT_STATE"].amount)])
 
 
-def applyAND(instruction, parameters, stack):
+def applyAND(instruction, parameters, stack) -> Data:
     match parameters[0].prim:
         case "bool":
             return Data(
@@ -351,16 +353,139 @@ def applyAND(instruction, parameters, stack):
             return Data(
                 "nat", [str(int(parameters[0].value[0]) & int(parameters[1].value[0]))]
             )
+        case _:
+            raise CustomException("prim error in AND", [instruction, parameters])
 
 
-def applyAPPLY(instruction, parameters, stack):
+def applyAPPLY(instruction, parameters, stack) -> Data:
     # Not implemented
     return Data("lambda", [])
 
 
-def applyBALANCE(instruction, parameters, stack):
+def applyBALANCE(instruction, parameters, stack) -> Data:
     return Data("mutez", [str(globals()["CURRENT_STATE"].amount)])
 
 
+def applyBLAKE2B(instruction, parameters, stack) -> Data:
+    return Data("bytes", [blake2b(bytes(parameters[0].value[0], "utf-8")).hexdigest()])
+
+
+def applyCAR(instruction, parameters, stack):
+    return parameters[0].value[0]
+
+
+def applyCDR(instruction, parameters, stack):
+    return parameters[0].value[0]
+
+
+def applyCHAIN_ID(instruction, parameters, stack):
+    # Not implemented
+    return Data("chain_id", [""])
+
+
+def applyCHECK_SIGNATURE(instruction, parameters, stack) -> Data:
+    # Not implemented
+    return Data("bool", ["False"])
+
+
+def applyCOMPARE(instruction, parameters, stack) -> Data:
+    # template
+    if "C" not in parameters[0].attributes or "C" not in parameters[1].attributes:
+        raise CustomException(
+            "can't compare non-Comparable types", [instruction, parameters]
+        )
+    output = Data("int", [])
+    match parameters[0].prim:
+        case "nat" | "int" | "mutez" | "timestamp":
+            z1 = int(parameters[0].value[0])
+            z2 = int(parameters[1].value[0])
+            if z1 < z2:
+                output.value.append("-1")
+            elif z1 > z2:
+                output.value.append("1")
+            else:
+                output.value.append("0")
+        case (
+            "address"
+            | "string"
+            | "bytes"
+            | "key_hash"
+            | "key"
+            | "signature"
+            | "chain_id"
+        ):
+            if parameters[0].value[0] < parameters[1].value[0]:
+                output.value.append("-1")
+            elif parameters[0].value[0] > parameters[1].value[0]:
+                output.value.append("1")
+            else:
+                output.value.append("0")
+        case _:
+            raise CustomException(
+                "COMPARE not implemented for complex types", [instruction, parameters]
+            )
+    return output
+
+
+def applyCONCAT(instruction, parameters, stack) -> Data:
+    value = ""
+    if parameters[0].prim != "list":
+        value = parameters[0].value[0] + parameters[1].value[0]
+        return Data("string" if parameters[0].prim == "string" else "bytes", [value])
+    else:
+        for i in parameters[0].value[0]:
+            value += i.value[0]
+        return Data(
+            "string" if parameters[0].listType.prim == "string" else "bytes", [value]
+        )
+
+
+def applyCONS(instruction, parameters, stack):
+    if parameters[0].prim != parameters[1].listType.prim:
+        raise CustomException(
+            "list type and element type are not same", [instruction, parameters]
+        )
+    else:
+        parameters[1].value[0].insert(0, parameters[0])
+        return parameters[1]
+
+
+def applyCONTRACT(instruction, parameters, stack) -> Data:
+    # Not implemented completely
+    c = Data("contract", [parameters[0]])
+    setattr(c, "contractType", instruction.args[0])
+    output = Data("option", [c])
+    setattr(output, "optionValue", "Some")
+    setattr(output, "optionType", ["contract"])
+    return output
+
+
+def applyCREATE_CONTRACT(instruction, parameters, stack) -> List[Data]:
+    # Not implemented
+    return [Data("operation", []), Data("address", [])]
+
+
+def applyDIG(instruction, parameters, stack) -> None:
+    if instruction.args[0].int != 0:
+        if instruction.args[0].int > stack.length - 1:
+            raise CustomException(
+                "not enough elements in the stack", [instruction, parameters]
+            )
+        arrayMoveMutable(
+            stack, stack.length - 1 - instruction.args[0].int, stack.length - 1
+        )
+    return None
+
+
 def apply(instruction, parameters, stack):
-    ...  # template
+    # boilerplate instruction function
+    ...
+
+
+# from https://github.com/sindresorhus/array-move
+# TODO: needs testing
+def arrayMoveMutable(l: List, from_index: int, to_index: int) -> None:
+    start_index = len(l) + from_index if from_index < 0 else from_index
+    if start_index >= 0 and start_index < len(l):
+        end_index = len(l) + to_index if to_index < 0 else to_index
+        l.insert(end_index, l.pop(from_index))

@@ -15,7 +15,7 @@ class Data:
     value: list = field(default_factory=list)
     name: str = ""
     raw: dict = field(default_factory=dict)
-    attributes: list = field(default_factory=list, init=False)
+    attributes: list[str] = field(default_factory=list, init=False)
 
     def __post_init__(self) -> None:
         if self.raw != {}:
@@ -77,4 +77,4 @@ class State:
 class Step:
     delta: Delta
     instruction: list = field(default_factory=list)
-    stack: list = field(default_factory=list)
+    stack: list[Data] = field(default_factory=list)
