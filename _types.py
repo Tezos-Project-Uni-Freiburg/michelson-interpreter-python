@@ -15,7 +15,7 @@ class Data:
     value: list = field(default_factory=list)
     name: str = ""
     raw: dict = field(default_factory=dict)
-    attributes: list[str] = field(default_factory=list, init=False)
+    attributes: set[str] = field(default_factory=set, init=False)
 
     def __post_init__(self) -> None:
         if self.raw != {}:
@@ -39,15 +39,15 @@ class Data:
                 | "timestamp"
                 | "unit"
             ):
-                self.attributes.extend(["C", "PM", "S", "PU", "PA", "B", "D"])
+                self.attributes.update({"C", "PM", "S", "PU", "PA", "B", "D"})
             case "big_map":
-                self.attributes.extend(["PM", "S", "D"])
+                self.attributes.update({"PM", "S", "D"})
             case "lambda" | "list" | "map" | "set":
-                self.attributes.extend(["PM", "S", "PU", "PA", "B", "D"])
+                self.attributes.update({"PM", "S", "PU", "PA", "B", "D"})
             case "contract":
-                self.attributes.extend(["PM", "PA", "D"])
+                self.attributes.update({"PM", "PA", "D"})
             case "operation":
-                self.attributes.extend(["D"])
+                self.attributes.update({"D"})
             case _:
                 raise CustomException(
                     "unknown data type " + self.prim, [self.prim, self.value, self.name]

@@ -1,7 +1,9 @@
 #!/usr/bin/python3
 
+from copy import deepcopy
 from functools import reduce
 from hashlib import blake2b
+from math import trunc
 from types import NoneType
 from typing import Any, Dict, List
 from _types import CustomException, Data, Delta, State, Step
@@ -307,11 +309,11 @@ def process_instruction(
 # instruction functions
 
 
-def applyABS(instruction, parameters, stack) -> Data:
+def applyABS(instruction, parameters, stack: List[Data]) -> Data:
     return Data("nat", [str(abs(int(parameters[0].value[0])))])
 
 
-def applyADD(instruction, parameters, stack) -> Data:
+def applyADD(instruction, parameters, stack: List[Data]) -> Data:
     output = Data("", [str(int(parameters[0].value[0]) + int(parameters[1].value[0]))])
     match parameters[0].prim:
         case "nat":
@@ -329,15 +331,15 @@ def applyADD(instruction, parameters, stack) -> Data:
     return output
 
 
-def applyADDRESS(instruction, parameters, stack):
+def applyADDRESS(instruction, parameters, stack: List[Data]):
     return parameters[0].value[0]
 
 
-def applyAMOUNT(instruction, parameters, stack) -> Data:
+def applyAMOUNT(instruction, parameters, stack: List[Data]) -> Data:
     return Data("mutez", [str(globals()["CURRENT_STATE"].amount)])
 
 
-def applyAND(instruction, parameters, stack) -> Data:
+def applyAND(instruction, parameters, stack: List[Data]) -> Data:
     match parameters[0].prim:
         case "bool":
             return Data(
@@ -357,38 +359,38 @@ def applyAND(instruction, parameters, stack) -> Data:
             raise CustomException("prim error in AND", [instruction, parameters])
 
 
-def applyAPPLY(instruction, parameters, stack) -> Data:
+def applyAPPLY(instruction, parameters, stack: List[Data]) -> Data:
     # Not implemented
     return Data("lambda", [])
 
 
-def applyBALANCE(instruction, parameters, stack) -> Data:
+def applyBALANCE(instruction, parameters, stack: List[Data]) -> Data:
     return Data("mutez", [str(globals()["CURRENT_STATE"].amount)])
 
 
-def applyBLAKE2B(instruction, parameters, stack) -> Data:
+def applyBLAKE2B(instruction, parameters, stack: List[Data]) -> Data:
     return Data("bytes", [blake2b(bytes(parameters[0].value[0], "utf-8")).hexdigest()])
 
 
-def applyCAR(instruction, parameters, stack):
+def applyCAR(instruction, parameters, stack: List[Data]):
     return parameters[0].value[0]
 
 
-def applyCDR(instruction, parameters, stack):
+def applyCDR(instruction, parameters, stack: List[Data]):
     return parameters[0].value[0]
 
 
-def applyCHAIN_ID(instruction, parameters, stack):
+def applyCHAIN_ID(instruction, parameters, stack: List[Data]):
     # Not implemented
     return Data("chain_id", [""])
 
 
-def applyCHECK_SIGNATURE(instruction, parameters, stack) -> Data:
+def applyCHECK_SIGNATURE(instruction, parameters, stack: List[Data]) -> Data:
     # Not implemented
     return Data("bool", ["False"])
 
 
-def applyCOMPARE(instruction, parameters, stack) -> Data:
+def applyCOMPARE(instruction, parameters, stack: List[Data]) -> Data:
     # template
     if "C" not in parameters[0].attributes or "C" not in parameters[1].attributes:
         raise CustomException(
@@ -427,7 +429,7 @@ def applyCOMPARE(instruction, parameters, stack) -> Data:
     return output
 
 
-def applyCONCAT(instruction, parameters, stack) -> Data:
+def applyCONCAT(instruction, parameters, stack: List[Data]) -> Data:
     value = ""
     if parameters[0].prim != "list":
         value = parameters[0].value[0] + parameters[1].value[0]
@@ -440,7 +442,7 @@ def applyCONCAT(instruction, parameters, stack) -> Data:
         )
 
 
-def applyCONS(instruction, parameters, stack):
+def applyCONS(instruction, parameters, stack: List[Data]):
     if parameters[0].prim != parameters[1].listType.prim:
         raise CustomException(
             "list type and element type are not same", [instruction, parameters]
@@ -450,7 +452,7 @@ def applyCONS(instruction, parameters, stack):
         return parameters[1]
 
 
-def applyCONTRACT(instruction, parameters, stack) -> Data:
+def applyCONTRACT(instruction, parameters, stack: List[Data]) -> Data:
     # Not implemented completely
     c = Data("contract", [parameters[0]])
     setattr(c, "contractType", instruction.args[0])
@@ -460,24 +462,177 @@ def applyCONTRACT(instruction, parameters, stack) -> Data:
     return output
 
 
-def applyCREATE_CONTRACT(instruction, parameters, stack) -> List[Data]:
+def applyCREATE_CONTRACT(instruction, parameters, stack: List[Data]) -> List[Data]:
     # Not implemented
     return [Data("operation", []), Data("address", [])]
 
 
-def applyDIG(instruction, parameters, stack) -> None:
+def applyDIG(instruction, parameters, stack: List[Data]) -> None:
     if instruction.args[0].int != 0:
-        if instruction.args[0].int > stack.length - 1:
+        if instruction.args[0].int > len(stack) - 1:
             raise CustomException(
                 "not enough elements in the stack", [instruction, parameters]
             )
         arrayMoveMutable(
-            stack, stack.length - 1 - instruction.args[0].int, stack.length - 1
+            stack, len(stack) - 1 - instruction.args[0].int, len(stack) - 1
         )
     return None
 
 
-def apply(instruction, parameters, stack):
+def applyDIP(instruction, parameters, stack: List[Data]) -> None:
+    n = 1
+    if hasattr(instruction.args[0], "int"):
+        n = int(instruction.args[0].int)
+        instruction.args.pop(0)
+    if n + 1 > len(stack):
+        raise CustomException("not enough elements in stack", [instruction, parameters])
+    p: List[Data] = []
+    for i in range(n):
+        p.insert(0, stack.pop())
+    for i in [
+        x for xs in instruction.args for x in xs
+    ]:  # TODO: Test this JS Array.flat equivalent from
+        # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+        step = process_instruction(i, stack)
+        if "IF" not in i.prim:
+            globals()["STEPS"].append(step)
+    for i in p:
+        stack.append(i)
+    return None
+
+
+def applyDROP(instruction, parameters, stack: List[Data]) -> None:
+    n = int(instruction.args[0].int) if hasattr(instruction, "args") else 1
+    if n > len(stack):
+        raise CustomException(
+            "not enough elements in the stack", [instruction, parameters]
+        )
+    if n != 0:
+        for _ in range(n):
+            stack.pop()
+    return None
+
+
+def applyDUG(instruction, parameters, stack: List[Data]) -> None:
+    n = int(instruction.args[0].int)
+    if n == 0:
+        return None
+    if n >= len(stack):
+        raise CustomException(
+            "not enough elements in the stack", [instruction, parameters]
+        )
+    stack.insert(len(stack) - 1 - n, stack[len(stack) - 1])
+    stack.pop()
+    return None
+
+
+def applyDUP(instruction, parameters, stack: List[Data]) -> Data:
+    n = int(instruction.args[0].int) if hasattr(instruction, "args") else 1
+    if n == 0:
+        raise CustomException(
+            "non-allowed value for " + instruction.prim + ": " + instruction.args,
+            [instruction, parameters],
+        )
+    if n > len(stack):
+        raise CustomException(
+            "not enough elements in the stack", [instruction, parameters]
+        )
+    return deepcopy(stack[len(stack) - n])
+
+
+def applyEDIV(instruction, parameters, stack: List[Data]) -> Data:
+    output = Data("option", [])
+    setattr(output, "optionType", ["pair"])
+    z1 = int(parameters[0].value[0])
+    z2 = int(parameters[1].value[0])
+
+    if z2 == 0:
+        setattr(output, "optionValue", "None")
+        return output
+    else:
+        setattr(output, "optionValue", "Some")
+
+    q = trunc(z1 / z2)
+    r = z1 % z2
+    t1 = ""
+    t2 = ""
+
+    match parameters[0].prim:
+        case "nat":
+            if parameters[1].prim == "nat":
+                t1 = "nat"
+                t2 = "nat"
+            else:
+                t1 = "int"
+                t2 = "nat"
+        case "int":
+            t1 = "int"
+            t2 = "nat"
+        case "mutez":
+            if parameters[1].prim == "nat":
+                t1 = "mutez"
+            else:
+                t1 = "nat"
+            t2 = "mutez"
+    output.value.append(Data("pair", [Data(t1, [str(q)]), Data(t2, [str(r)])]))
+    return output
+
+
+def applyEMPTY_BIG_MAP(instruction, parameters, stack: List[Data]) -> Data:
+    if "C" not in Data(instruction.args[0].prim).attributes:
+        raise CustomException("kty is not comparable", [instruction, parameters])
+    elif {instruction.args[1].prim}.issubset({"operation", "big_map"}):
+        raise CustomException(
+            "vty is " + instruction.args[1].prim, [instruction, parameters]
+        )
+    output = Data("big_map", [dict()])
+    setattr(output, "keyType", instruction.args[0])
+    setattr(output, "valueType", instruction.args[1])
+    return output
+
+
+def applyEMPTY_MAP(instruction, parameters, stack: List[Data]) -> Data:
+    if "C" not in Data(instruction.args[0].prim).attributes:
+        raise CustomException("kty is not comparable", [instruction, parameters])
+    return Data("map", [instruction.args[0].prim, instruction.args[1].prim])
+
+
+def applyEMPTY_SET(instruction, parameters, stack: List[Data]) -> Data:
+    if "C" not in Data(instruction.args[0].prim).attributes:
+        raise CustomException("kty is not comparable", [instruction, parameters])
+    output = Data("set", [set()])
+    setattr(output, "setType", instruction.args[0])
+    return output
+
+
+def applyEQ(instruction, parameters, stack: List[Data]) -> Data:
+    result = Data("bool", [])
+    if int(parameters[0].value[0]) == 0:
+        result.value.append("True")
+    else:
+        result.value.append("False")
+    return result
+
+
+def applyEXEC(instruction, parameters, stack: List[Data]) -> Data:
+    # Not implemented
+    return Data("unit", [])
+
+
+def applyFAILWITH(instruction, parameters, stack: List[Data]) -> None:
+    if "PA" not in stack[len(stack) - 1].attributes:
+        raise CustomException(
+            "FAILWITH got non-packable top element", [instruction, parameters]
+        )
+    else:
+        raise CustomException(
+            "got FAILWITH, top element of the stack: "
+            + str(stack[len(stack) - 1].value),
+            [instruction, parameters],
+        )
+
+
+def apply(instruction, parameters, stack: List[Data]) -> None:
     # boilerplate instruction function
     ...
 
