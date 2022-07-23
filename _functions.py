@@ -4,8 +4,10 @@ from copy import deepcopy
 from functools import reduce
 from hashlib import blake2b
 from math import trunc
-from types import NoneType
 from typing import Any, Dict, List
+
+from base58 import b58encode_check
+
 from _types import CustomException, Data, Delta, State, Step
 
 
@@ -630,6 +632,52 @@ def applyFAILWITH(instruction, parameters, stack: List[Data]) -> None:
             + str(stack[len(stack) - 1].value),
             [instruction, parameters],
         )
+
+
+def applyGE(instruction, parameters, stack: List[Data]) -> Data:
+    return Data("bool", ["True" if int(parameters[0].value[0]) >= 0 else "False"])
+
+
+def applyGET(instruction, parameters, stack: List[Data]) -> Data:
+    output = Data("option", [])
+    setattr(output, "optionType", [parameters[1].keyType.prim])
+    if parameters[0].value[0] in parameters[1].value[0]:
+        setattr(output, "optionValue", "Some")
+        output.value.append(parameters[1].value[0].get(parameters[0].value[0]))
+    else:
+        setattr(output, "optionValue", "None")
+    return output
+
+
+def applyGT(instruction, parameters, stack: List[Data]) -> Data:
+    return Data("bool", ["True" if int(parameters[0].value[0]) > 0 else "False"])
+
+
+def applyHASH_KEY(instruction, parameters, stack: List[Data]) -> Data:
+    return Data(
+        "key_hash",
+        [b58encode_check(bytes.fromhex(parameters[0].value[0])).decode("utf-8")],
+    )
+
+
+def applyIF(instruction, parameters, stack: List[Data]) -> None:
+    if parameters[0].value[0].lower() == "true":
+        for i in [
+            x for xs in instruction.args[0] for x in xs
+        ]:  # TODO: Test this JS Array.flat equivalent from
+            # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+            step = process_instruction(i, stack)
+            if "IF" not in i.prim:
+                globals()["STEPS"].append(step)
+    else:
+        for i in [
+            x for xs in instruction.args[1] for x in xs
+        ]:  # TODO: Test this JS Array.flat equivalent from
+            # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+            step = process_instruction(i, stack)
+            if "IF" not in i.prim:
+                globals()["STEPS"].append(step)
+    return None
 
 
 def apply(instruction, parameters, stack: List[Data]) -> None:
