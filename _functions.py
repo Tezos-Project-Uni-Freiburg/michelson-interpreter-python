@@ -680,6 +680,161 @@ def applyIF(instruction, parameters, stack: List[Data]) -> None:
     return None
 
 
+def applyIF_CONS(instruction, parameters, stack: List[Data]) -> None:
+    if len(parameters[0].value[0]) > 0:
+        d = parameters[0].value[0].pop(0)
+        stack.append(parameters[0])
+        stack.append(d)
+        branch = 0
+    else:
+        branch = 1
+    for i in [
+        x for xs in instruction.args[branch] for x in xs
+    ]:  # TODO: Test this JS Array.flat equivalent from
+        # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+        step = process_instruction(i, stack)
+        if "IF" not in i.prim:
+            globals()["STEPS"].append(step)
+    return None
+
+
+def applyIF_LEFT(instruction, parameters, stack: List[Data]) -> None:
+    stack.append(parameters[0].value[0])
+    branch = 0 if parameters[0].orValue == "Left" else 1
+    for i in [
+        x for xs in instruction.args[branch] for x in xs
+    ]:  # TODO: Test this JS Array.flat equivalent from
+        # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+        step = process_instruction(i, stack)
+        if "IF" not in i.prim:
+            globals()["STEPS"].append(step)
+    return None
+
+
+def applyIF_NONE(instruction, parameters, stack: List[Data]) -> None:
+    if parameters[0].optionValue == "None":
+        branch = 0
+    else:
+        branch = 1
+        stack.append(parameters[0].value[0])
+    for i in [
+        x for xs in instruction.args[branch] for x in xs
+    ]:  # TODO: Test this JS Array.flat equivalent from
+        # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+        step = process_instruction(i, stack)
+        if "IF" not in i.prim:
+            globals()["STEPS"].append(step)
+    return None
+
+
+def applyIMPLICIT_ACCOUNT(instruction, parameters, stack: List[Data]) -> Data:
+    output = Data("contract", [parameters[0]])
+    setattr(output, "contractType", Data("unit", ["Unit"]))
+    return output
+
+
+def applyINT(instruction, parameters, stack: List[Data]) -> Data:
+    return Data("int", [parameters[0].value[0]])
+
+
+def applyISNAT(instruction, parameters, stack: List[Data]) -> Data:
+    output = Data("option", [])
+    setattr(output, "optionType", ["nat"])
+    if int(parameters[0].value[0]) < 0:
+        setattr(output, "optionValue", "None")
+    else:
+        setattr(output, "optionValue", "Some")
+        output.value.append(Data("nat", [parameters[0].value[0]]))
+    return output
+
+
+def applyITER(instruction, parameters, stack: List[Data]) -> None:
+    # Not implemented
+    return None
+
+
+def applyLAMBDA(instruction, parameters, stack: List[Data]) -> None:
+    # Not implemented
+    return None
+
+
+def applyLE(instruction, parameters, stack: List[Data]) -> Data:
+    result = Data("bool", [])
+    if int(parameters[0].value[0]) <= 0:
+        result.value.append("True")
+    else:
+        result.value.append("False")
+    return result
+
+
+def applyLEFT(instruction, parameters, stack: List[Data]) -> Data:
+    output = Data("or", [parameters[0]])
+    setattr(output, "orValue", "Left")
+    setattr(output, "orType", [parameters[0].prim, instruction.args[0].prim])
+    return output
+
+
+def applyLOOP(instruction, parameters, stack: List[Data]) -> None:
+    top = stack.pop()
+    v = False
+    if top.prim != "bool":
+        raise CustomException(
+            "top element of stack is not bool", [instruction, parameters]
+        )
+    else:
+        v = top.value[0].lower() == "true"
+    while v:
+        for i in [
+            x for xs in instruction.args for x in xs
+        ]:  # TODO: Test this JS Array.flat equivalent from
+            # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+            step = process_instruction(i, stack)
+            if "IF" not in i.prim:
+                globals()["STEPS"].append(step)
+        top = stack.pop()
+        if top.prim != "bool":
+            raise CustomException(
+                "top element of stack is not bool", [instruction, parameters]
+            )
+        else:
+            v = top.value[0].lower() == "true"
+    return None
+
+
+def applyLOOP_LEFT(instruction, parameters, stack: List[Data]) -> None:
+    top = stack.pop()
+    v = False
+    if top.prim == "or":
+        raise CustomException(
+            "top element of stack is not or", [instruction, parameters]
+        )
+    elif getattr(top, "orValue") == "Right":
+        stack.append(top)
+        return None
+    else:
+        v = True
+    while v:
+        for i in [
+            x for xs in instruction.args for x in xs
+        ]:  # TODO: Test this JS Array.flat equivalent from
+            # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+            step = process_instruction(i, stack)
+            if "IF" not in i.prim:
+                globals()["STEPS"].append(step)
+        top = stack.pop()
+        v = False
+        if top.prim != "or":
+            raise CustomException(
+                "top element of stack is not or", [instruction, parameters]
+            )
+        elif getattr(top, "orValue") == "Right":
+            stack.append(top)
+            return None
+        else:
+            v = True
+    return None
+
+
 def apply(instruction, parameters, stack: List[Data]) -> None:
     # boilerplate instruction function
     ...
