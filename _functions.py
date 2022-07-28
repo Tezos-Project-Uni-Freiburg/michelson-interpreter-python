@@ -4,6 +4,7 @@ from copy import deepcopy
 from functools import reduce
 from hashlib import blake2b
 from math import trunc
+from time import time
 from typing import Any, Dict, List
 
 from base58 import b58encode_check
@@ -833,6 +834,126 @@ def applyLOOP_LEFT(instruction, parameters, stack: List[Data]) -> None:
         else:
             v = True
     return None
+
+
+def applyLSL(instruction, parameters, stack: List[Data]) -> Data:
+    f = int(parameters[0].value[0])
+    s = int(parameters[1].value[0])
+    if s > 256:
+        raise CustomException("s is larger than 256", [instruction, parameters])
+    return Data("nat", [str(f << s)])
+
+
+def applyLSR(instruction, parameters, stack: List[Data]) -> Data:
+    f = int(parameters[0].value[0])
+    s = int(parameters[1].value[0])
+    if s > 256:
+        raise CustomException("s is larger than 256", [instruction, parameters])
+    return Data("nat", [str(f >> s)])
+
+
+def applyLT(instruction, parameters, stack: List[Data]) -> Data:
+    return Data("bool", ["True" if int(parameters[0].value[0]) < 0 else "False"])
+
+
+def applyMAP(instruction, parameters, stack: List[Data]):
+    new_list = []
+    for _ in range(len(parameters[0].value[0])):
+        stack.append(parameters[0].value[0].pop(0))
+        for j in instruction.args[::-1]:
+            step = process_instruction(j, stack)
+            if "IF" not in j.prim:
+                globals()["STEPS"].append(step)
+        new_list.append(stack.pop())
+    parameters[0].value[0] = new_list
+    return parameters[0]
+
+
+def applyMEM(instruction, parameters, stack: List[Data]) -> Data:
+    if (
+        parameters[1].prim in ["big_map", "map"]
+        and parameters[1].keyType != parameters[0].prim
+    ) or parameters[1].setType != parameters[0].prim:
+        raise CustomException(
+            "key or element type does not match", [instruction, parameters]
+        )
+    return Data(
+        "bool",
+        ["True" if parameters[0].value[0] in parameters[1].value[0] else "False"],
+    )
+
+
+def applyMUL(instruction, parameters, stack: List[Data]) -> Data:
+    z1 = int(parameters[0].value[0])
+    z2 = int(parameters[1].value[0])
+    t = ""
+
+    match parameters[0].prim:
+        case "nat":
+            t = parameters[1].prim
+        case "int":
+            t = "int"
+        case "mutez":
+            t = "mutez"
+    return Data(t, [str(z1 * z2)])
+
+
+def applyNEG(instruction, parameters, stack: List[Data]) -> Data:
+    return Data("int", [str(-int(parameters[0].value[0]))])
+
+
+def applyNEQ(instruction, parameters, stack: List[Data]) -> Data:
+    return Data("bool", ["True" if int(parameters[0].value[0]) != 0 else "False"])
+
+
+def applyNIL(instruction, parameters, stack: List[Data]) -> Data:
+    if not hasattr(instruction, "args"):
+        raise CustomException("type of list is not declared", [instruction, parameters])
+    output = Data("list", [[]])
+    setattr(output, "listType", instruction.args[0])
+    return output
+
+
+def applyNONE(instruction, parameters, stack: List[Data]) -> Data:
+    if not hasattr(instruction, "args"):
+        raise CustomException(
+            "type of option is not declared", [instruction, parameters]
+        )
+    output = Data("option", [instruction.args[0].prim])
+    setattr(output, "optionValue", "None")
+    setattr(output, "optionType", instruction.args)
+    return output
+
+
+def applyNOT(instruction, parameters, stack: List[Data]) -> Data:
+    match parameters[0].prim:
+        case "int" | "nat":
+            return Data("int", [str(~int(parameters[0].value[0]))])
+        case "bool":
+            return Data("bool", [str(parameters[0].value[0].lower() == "true")])
+        case _:
+            raise CustomException("unknown prim", [instruction, parameters])
+
+
+def applyNOW(instruction, parameters, stack: List[Data]) -> Data:
+    return Data("timestamp", [str(int(time() * 1000))])
+
+
+def applyOR(instruction, parameters, stack: List[Data]) -> Data:
+    if parameters[0].prim == "bool":
+        return Data(
+            "bool",
+            [
+                str(
+                    (parameters[0].value[0].lower()) == "true"
+                    or (parameters[1].value[0].lower() == "true")
+                )
+            ],
+        )
+    else:
+        return Data(
+            "nat", [str(int(parameters[0].value[0]) | int(parameters[1].value[0]))]
+        )
 
 
 def apply(instruction, parameters, stack: List[Data]) -> None:
