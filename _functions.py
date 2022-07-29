@@ -3,6 +3,7 @@
 from copy import deepcopy
 from functools import reduce
 from hashlib import blake2b
+import json
 from math import trunc
 from time import time
 from typing import Any, Dict, List
@@ -954,6 +955,102 @@ def applyOR(instruction, parameters, stack: List[Data]) -> Data:
         return Data(
             "nat", [str(int(parameters[0].value[0]) | int(parameters[1].value[0]))]
         )
+
+
+def applyPACK(instruction, parameters, stack: List[Data]) -> Data:
+    # not implemented
+    if "PA" not in parameters[0].attributes:
+        raise CustomException("can't PACK non-packable type", [instruction, parameters])
+    return Data("bytes", [bytes(json.dumps(parameters[0].value), "utf-8").hex()])
+
+
+def applyPAIR(instruction, parameters, stack: List[Data]) -> Data:
+    if hasattr(instruction, "args"):
+        raise CustomException(
+            "PAIR 'n' case hasn't been implemented", [instruction, parameters]
+        )
+    return Data("pair", [parameters[0], parameters[1]])
+
+
+def applyPUSH(instruction, parameters, stack: List[Data]) -> Data:
+    output = Data(instruction.args[0].prim, [])
+    match instruction.args[0].prim:
+        case "list":
+            output.value.append([])
+            setattr(output, "listType", instruction.args[0].args[0])
+            for i in range(1, len(instruction.args)):
+                v0 = Data(
+                    getattr(output, "listType").prim,
+                    [
+                        instruction.args[i].int
+                        or instruction.args[i].string
+                        or instruction.args[i].bytes
+                        or instruction.args[i].prim
+                    ],
+                )
+                output.value[0].append(v0)
+        case "option":
+            setattr(output, "optionValue", instruction.args[1].prim)
+            setattr(output, "optionType", [instruction.args[0].args[0]])
+            if getattr(output, "optionValue") != "None":
+                v1 = Data(
+                    getattr(output, "optionType")[0].prim,
+                    [
+                        instruction.args[1].args[0].int
+                        or instruction.args[1].args[0].string
+                        or instruction.args[1].args[0].bytes
+                        or instruction.args[1].args[0].prim
+                    ],
+                )
+                output.value.append(v1)
+        case "or":
+            setattr(output, "orValue", instruction.args[1].prim)
+            setattr(output, "orType", instruction.args[0].args)
+            v2 = Data(
+                getattr(output, "orType")[0].prim
+                if getattr(output, "orValue") == "Left"
+                else getattr(output, "orType")[1].prim,
+                [
+                    instruction.args[1].args[0].int
+                    or instruction.args[1].args[0].string
+                    or instruction.args[1].args[0].bytes
+                    or instruction.args[1].args[0].prim
+                ],
+            )
+            output.value.append(v2)
+        case _:
+            value = (
+                instruction.args[1].int
+                or instruction.args[1].string
+                or instruction.args[1].bytes
+                or instruction.args[1].prim
+            )
+            output.value.append(value)
+    return output
+
+
+def applyRIGHT(instruction, parameters, stack: List[Data]) -> Data:
+    output = Data("or", [parameters[0]])
+    setattr(output, "orValue", "Right")
+    setattr(output, "orType", [instruction.args[0].prim, parameters[0].prim])
+    return output
+
+
+def applySELF(instruction, parameters, stack: List[Data]) -> Data:
+    # Not implemented completely
+    output = Data("contract", [Data("address", [globals()["currentState"].address])])
+    setattr(output, "contractType", "Unit")
+    return output
+
+
+def applySENDER(instruction, parameters, stack: List[Data]) -> Data:
+    # Not implemented completely/correctly
+    return Data("address", [globals()["currentState"].address])
+
+
+def applySET_DELEGATE(instruction, parameters, stack: List[Data]) -> Data:
+    # Not implemented
+    return Data("operation", [])
 
 
 def apply(instruction, parameters, stack: List[Data]) -> None:
