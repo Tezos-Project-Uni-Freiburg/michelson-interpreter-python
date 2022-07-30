@@ -1,10 +1,12 @@
 #!/usr/bin/python3
 
+import ast
 from copy import deepcopy
 from functools import reduce
-from hashlib import blake2b
+from hashlib import blake2b, sha256, sha512
 import json
 from math import trunc
+import re
 from time import time
 from typing import Any, Dict, List
 
@@ -1051,6 +1053,136 @@ def applySENDER(instruction, parameters, stack: List[Data]) -> Data:
 def applySET_DELEGATE(instruction, parameters, stack: List[Data]) -> Data:
     # Not implemented
     return Data("operation", [])
+
+
+def applySHA256(instruction, parameters, stack: List[Data]) -> Data:
+    return Data("bytes", [sha256(bytes(parameters[0].value[0])).hexdigest()])
+
+
+def applySHA512(instruction, parameters, stack: List[Data]) -> Data:
+    return Data("bytes", [sha512(bytes(parameters[0].value[0])).hexdigest()])
+
+
+def applySIZE(instruction, parameters, stack: List[Data]) -> Data:
+    return Data("nat", [str(len(parameters[0].value[0]))])
+
+
+def applySLICE(instruction, parameters, stack: List[Data]) -> Data:
+    offset = int(parameters[0].value[0])
+    _len = int(parameters[1].value[0])
+    _str = parameters[2].value[0]
+    output = Data("option", [])
+    setattr(output, "optionType", [parameters[2].prim])
+    if len(_str) == 0 or offset >= len(_str) or offset + _len > len(_str):
+        setattr(output, "optionValue", "None")
+    elif offset < len(_str) and offset + _len <= len(_str):
+        setattr(output, "optionValue", "Some")
+        output.value.append(
+            Data(parameters[2].prim, [_str[slice(offset, offset + _len)]])
+        )
+    return output
+
+
+def applySOME(instruction, parameters, stack: List[Data]) -> Data:
+    if not hasattr(instruction, "args"):
+        raise CustomException(
+            "type of option is not declared", [instruction, parameters]
+        )
+    elif instruction.args[0].prim != parameters[0].prim:
+        raise CustomException(
+            "stack value and option type doesn't match", [instruction, parameters]
+        )
+    output = Data("option", [parameters[0]])
+    setattr(output, "optionValue", "Some")
+    setattr(output, "optionType", [instruction.args[0].prim])
+    return output
+
+
+def applySOURCE(instruction, parameters, stack: List[Data]) -> Data:
+    # Not implemented completely
+    return Data("address", [globals()["currentState"].address])
+
+
+def applySUB(instruction, parameters, stack: List[Data]) -> Data:
+    if "timestamp" in [parameters[0].prim, parameters[1].prim] and (
+        re.match(r"[a-z]", parameters[0].value[0], flags=re.I)
+        or re.match(r"[a-z]", parameters[1].value[0], flags=re.I)
+    ):
+        raise CustomException(
+            "SUB not implemented for timestamps in RFC3339 notation",
+            [instruction, parameters],
+        )
+
+    z1 = int(parameters[0].value[0])
+    z2 = int(parameters[1].value[0])
+    t = ""
+
+    match parameters[0].prim:
+        case "nat" | "int":
+            t = "int"
+        case "timestamp":
+            t = "timestamp" if parameters[1].prim == "int" else "int"
+        case "mutez":
+            t = "mutez"
+
+    return Data(t, [str(z1 - z2)])
+
+
+def applySWAP(instruction, parameters, stack: List[Data]) -> List:
+    return parameters[::-1]
+
+
+def applyTRANSFER_TOKENS(instruction, parameters, stack: List[Data]) -> Data:
+    # Not implemented
+    return Data("operation", [])
+
+
+def applyUNIT(instruction, parameters, stack: List[Data]) -> Data:
+    return Data("unit", ["Unit"])
+
+
+def applyUNPACK(instruction, parameters, stack: List[Data]) -> Data:
+    # Type check is not being done here
+    v = ast.literal_eval(
+        json.dumps(bytes.fromhex(parameters[0].value[0]).decode("utf-8"))
+    )
+    output = Data("option", [])
+    i = Data(instruction.args[0].prim, [])
+    # Don't know why this check is here
+    if hasattr(instruction.args[0], "args") and all(
+        y == v[x].prim
+        for x, y in enumerate(map(lambda x: x.prim, instruction.args[0].args))
+    ):
+        i.value = v
+    else:
+        i.value = v
+    # Not implemented
+    setattr(output, "optionValue", "Some")
+    setattr(output, "optionType", [instruction.args[0].prim])
+    output.value.append(i)
+    return output
+
+
+def applyUPDATE(instruction, parameters, stack: List[Data]):
+    if parameters[1].prim == "bool":
+        if parameters[0].prim != parameters[2].setType:
+            raise CustomException("set type does not match", [instruction, parameters])
+        if parameters[1].value[0].lower() == "true":
+            parameters[2].value[0].add(parameters[2].value)
+        else:
+            parameters[2].value[0].remove(parameters[2].value)
+    else:
+        if parameters[0].prim != parameters[2].keyType:
+            raise CustomException("key type does not match", [instruction, parameters])
+        if parameters[1].optionValue == "Some":
+            if parameters[1].optionType[0] != parameters[2].valueType:
+                raise CustomException(
+                    "value type does not match", [instruction, parameters]
+                )
+            parameters[2].value[0][parameters[0].value[0]] = parameters[1]
+        elif parameters[0].value[0] in parameters[2].value[0]:
+            parameters[2].value[0].pop(parameters[0].value[0])
+    return parameters[2]
 
 
 def apply(instruction, parameters, stack: List[Data]) -> None:
