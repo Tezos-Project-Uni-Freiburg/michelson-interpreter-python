@@ -1185,6 +1185,21 @@ def applyUPDATE(instruction, parameters, stack: List[Data]):
     return parameters[2]
 
 
+def applyXOR(instruction, parameters, stack: List[Data]) -> Data:
+    if parameters[0].prim == "bool":
+        return Data(
+            "bool",
+            [str(parameters[0].value[0].lower() != parameters[1].value[0].lower())],
+        )
+    else:
+        return Data(
+            "nat", [str(int(parameters[0].value[0]) ^ int(parameters[1].value[0]))]
+        )
+
+
+# instruction functions end
+
+
 def apply(instruction, parameters, stack: List[Data]) -> None:
     # boilerplate instruction function
     ...
