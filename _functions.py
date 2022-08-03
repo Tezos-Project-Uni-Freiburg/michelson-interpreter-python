@@ -1285,6 +1285,113 @@ def parseLIST(args, value) -> Data:
     return output
 
 
+def parseMAP(args, value) -> Data:
+    output = Data("map", [dict()])
+    setattr(output, "keyType", args[0])
+    setattr(output, "valueType", args[1])
+
+    params = re.match(
+        r"\s*\{\s*((?:Elt\s+.+\s+.+\s*;\s*)+(?:Elt\s+.+\s+.+\s*)?)\}\s*", value
+    )
+    if params is None:
+        raise CustomException(
+            "input doesn't match with the specified types", [args, value]
+        )
+    kv = [x.strip() for x in params[1].split(";")]
+    if kv[len(kv) - 1] == "":
+        kv.pop()
+    for i in kv:
+        r = re.match(r'Elt\s+([a-zA-Z0-9"_ ]+)\s+(.+)', i)
+        if r is None:
+            raise CustomException(
+                "input doesn't match with the specified types", [args, value]
+            )
+        # r[1] is the key, and r[2] is the value
+        match getattr(output, "keyType").prim:
+            case (
+                "int" | "mutez" | "nat" | "timestamp" | "bytes" | "signature" | "bool"
+            ):
+                if r[1] in output.value[0]:
+                    raise CustomException("key already present in map", [args, value])
+            case ("string" | "address" | "key" | "key_hash"):
+                if re.sub(r'^"(.+(?="$))"$', r"\1", r[1]) in output.value[0]:
+                    raise CustomException("key already present in map", [args, value])
+            case _:
+                raise CustomException("not implemented", [args, value])
+        output.value[0][r[1]] = globals()[
+            "parse" + getattr(output, "valueType").prim.upper()
+        ](args[1].args, r[2])
+    return output
+
+
+def parseMUTEZ(args, value) -> Data:
+    return Data("mutez", [value])
+
+
+def parseNAT(args, value) -> Data:
+    return Data("nat", [value])
+
+
+def parseOPTION(args, value) -> Data:
+    # Currently no parameter type check is being done
+    output = Data("option", [])
+    setattr(output, "optionType", [args[0].prim])
+    params = re.match(r"\s*\(\s*(?:(?:Some)\s+(.+)|(?:None)\s*)\s*\)\s*", value)
+    if params is None:
+        raise CustomException(
+            "input doesn't match with the specified types", [args, value]
+        )
+    if "None" in params[0]:
+        setattr(output, "optionValue", "None")
+    else:
+        setattr(output, "optionValue", "Some")
+        output.value.append(
+            globals()["parse" + getattr(output, "optionType")[0].upper()](
+                args, params[1]
+            )
+        )
+    return output
+
+
+def parseOR(args, value) -> Data:
+    # Currently no parameter type check is being done
+    params = re.match(r"\s*\(\s*(?:(Left|Right)\s+(.+))\s*\)\s*", value)
+    output = Data("or", [])
+    if params is None:
+        raise CustomException(
+            "input doesn't match with the specified types", [args, value]
+        )
+    setattr(output, "orValue", params[1])
+    setattr(output, "orType", args)
+    output.value.append(
+        Data(
+            getattr(output, "orType")[0].prim
+            if getattr(output, "orValue") == "Left"
+            else getattr(output, "orType")[1].prim,
+            [params[2]],
+        )
+    )
+    return output
+
+
+def parsePAIR(args, value) -> Data:
+    output = Data("pair", [])
+    params = re.match(
+        r"\s*\(\s*Pair\s+((?:\(.+\))|(?:.+?))\s+((?:\(.+\))|(?:.+?))\s*\)\s*", value
+    )
+    if params is None:
+        raise CustomException(
+            "input doesn't match with the specified types", [args, value]
+        )
+    output.value.append(
+        globals()["parse" + args[0].prim.upper()](args[0].args, params[1])
+    )
+    output.value.append(
+        globals()["parse" + args[1].prim.upper()](args[1].args, params[2])
+    )
+    return output
+
+
 def parse(args, value) -> Data:
     # boilerplate parsing function
     ...
