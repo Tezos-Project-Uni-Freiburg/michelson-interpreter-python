@@ -1199,6 +1199,96 @@ def applyXOR(instruction, parameters, stack: List[Data]) -> Data:
 
 # instruction functions end
 
+# parsing functions start
+def parseADDRESS(args, value) -> Data:
+    return Data("address", [re.sub(r'^"(.+(?="$))"$', r"\1", value)])
+
+
+def parseBIG_MAP(args, value) -> Data:
+    output = Data("big_map", [dict()])
+    setattr(output, "keyType", args[0])
+    setattr(output, "valueType", args[1])
+
+    params = re.match(
+        r"\s*\{\s*((?:Elt\s+.+\s+.+\s*;\s*)+(?:Elt\s+.+\s+.+\s*)?)\}\s*", value
+    )
+    if params is None:
+        raise CustomException(
+            "input doesn't match with the specified types", [args, value]
+        )
+    kv = [x.strip() for x in params[1].split(";")]
+    if kv[len(kv) - 1] == "":
+        kv.pop()
+    for i in kv:
+        r = re.match(r'Elt\s+([a-zA-Z0-9"_ ]+)\s+(.+)', i)
+        if r is None:
+            raise CustomException(
+                "input doesn't match with the specified types", [args, value]
+            )
+        # r[1] is the key, and r[2] is the value
+        match getattr(output, "keyType").prim:
+            case (
+                "int" | "mutez" | "nat" | "timestamp" | "bytes" | "signature" | "bool"
+            ):
+                if r[1] in output.value[0]:
+                    raise CustomException("key already present in map", [args, value])
+            case ("string" | "address" | "key" | "key_hash"):
+                if re.sub(r'^"(.+(?="$))"$', r"\1", r[1]) in output.value[0]:
+                    raise CustomException("key already present in map", [args, value])
+            case _:
+                raise CustomException("not implemented", [args, value])
+        output.value[0][r[1]] = globals()[
+            "parse" + getattr(output, "valueType").prim.upper()
+        ](args[1].args, r[2])
+    return output
+
+
+def parseBOOL(args, value) -> Data:
+    return Data("bool", [value])
+
+
+def parseBYTES(args, value) -> Data:
+    r = re.match(r"0x([a-fA-F0-9]+)", value)
+    if r is None:
+        raise CustomException("can't parse", [args, value])
+    return Data("bytes", [r[1]])
+
+
+def parseINT(args, value) -> Data:
+    return Data("int", [value])
+
+
+def parseKEY(args, value) -> Data:
+    return Data("key", [re.sub(r'^"(.+(?="$))"$', r"\1", value)])
+
+
+def parseKEY_HASH(args, value) -> Data:
+    return Data("key_hash", [re.sub(r'^"(.+(?="$))"$', r"\1", value)])
+
+
+def parseLIST(args, value) -> Data:
+    output = Data("list", [[]])
+    setattr(output, "listType", args[0])
+
+    params = re.match(r"\s*\{((?:.+\s*;)+(?:.+\s*)?)\s*\}\s*", value)
+    if params is None:
+        raise CustomException(
+            "input doesn't match with the specified types", [args, value]
+        )
+    elements = [x.strip() for x in params[1].split(";")]
+    if elements[len(elements) - 1] == "":
+        elements.pop()
+    for i in elements:
+        output.value[0].append(
+            globals()["parse" + getattr(output, "listType").prim.upper()](args[0], i)
+        )
+    return output
+
+
+def parse(args, value) -> Data:
+    # boilerplate parsing function
+    ...
+
 
 def apply(instruction, parameters, stack: List[Data]) -> None:
     # boilerplate instruction function
