@@ -2,11 +2,13 @@
 
 import ast
 from copy import deepcopy
+from datetime import datetime
 from functools import reduce
 from hashlib import blake2b, sha256, sha512
 import json
 from math import trunc
 import re
+from sys import flags
 from time import time
 from typing import Any, Dict, List
 
@@ -1197,7 +1199,13 @@ def applyXOR(instruction, parameters, stack: List[Data]) -> Data:
         )
 
 
+def apply(instruction, parameters, stack: List[Data]) -> None:
+    # boilerplate instruction function
+    ...
+
+
 # instruction functions end
+
 
 # parsing functions start
 def parseADDRESS(args, value) -> Data:
@@ -1392,14 +1400,71 @@ def parsePAIR(args, value) -> Data:
     return output
 
 
+def parseSET(args, value) -> Data:
+    output = Data("set", [set()])
+    setattr(output, "setType", args[0])
+
+    params = re.match(r"\s*\{((?:.+\s*;)+(?:.+\s*)?)\s*\}\s*", value)
+    if params is None:
+        raise CustomException(
+            "input doesn't match with the specified types", [args, value]
+        )
+    elements = [x.strip() for x in params[1].split(";")]
+    if elements[len(elements) - 1] == "":
+        elements.pop()
+    for i in range(len(elements)):
+        match getattr(output, "setType").prim:
+            case (
+                "int" | "mutez" | "nat" | "timestamp" | "bytes" | "signature" | "bool"
+            ):
+                if elements[i] in output.value[0]:
+                    raise CustomException("value already present in set", [args, value])
+            case ("string" | "address" | "key" | "key_hash"):
+                elements[i] = re.sub(r'^"(.+(?="$))"$', r"\1", elements[i])
+                if elements[i] in output.value[0]:
+                    raise CustomException("value already present in set", [args, value])
+            case _:
+                raise CustomException("not implemented", [args, value])
+        output.value[0].add(elements[i])
+    return output
+
+
+def parseSIGNATURE(args, value) -> Data:
+    # unfortunately no validation as of now
+    return Data("signature", [value])
+
+
+def parseSTRING(args, value) -> Data:
+    return Data("string", [re.sub(r'^"(.+(?="$))"$', r"\1", value)])
+
+
+def parseTIMESTAMP(args, value) -> Data:
+    return Data(
+        "timestamp",
+        [
+            str(
+                (
+                    datetime.fromisoformat(
+                        re.sub(r'^"(.+(?="$))"$', r"\1", value)
+                    ).timestamp()
+                )
+            )
+            if re.match(r"[a-z]", value, flags=re.I)
+            else str(value)
+        ],
+    )
+
+
+def parseUNIT(args, value) -> Data:
+    return Data("unit", ["Unit"])
+
+
 def parse(args, value) -> Data:
     # boilerplate parsing function
     ...
 
 
-def apply(instruction, parameters, stack: List[Data]) -> None:
-    # boilerplate instruction function
-    ...
+# parsing functions end
 
 
 # from https://github.com/sindresorhus/array-move
