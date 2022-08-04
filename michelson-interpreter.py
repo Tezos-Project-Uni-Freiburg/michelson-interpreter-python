@@ -46,7 +46,9 @@ def michelson_interpreter(
         flatten(flatten(s[2]["args"])),
     )
     STACK.append(
-        initialize(parameter_type["args"][0], parameter, storage_type["args"][0], storage)
+        initialize(
+            parameter_type["args"][0], parameter, storage_type["args"][0], storage
+        )
     )
     STATES.append(copy.deepcopy(CURRENT_STATE))
     STEPS.append(Step(Delta([], [STACK[0]]), [parameter_type, storage_type], STACK))
