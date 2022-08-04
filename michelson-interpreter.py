@@ -1,7 +1,7 @@
 #!/usr/bin/python3
+import copy
 import io
 import json
-import pprint
 import re
 import subprocess
 import sys
@@ -9,8 +9,9 @@ from typing import List
 
 import click
 
-from _types import Delta, State, Step
-import _functions
+from _types import Data, Delta, State, Step
+from _functions import flatten, initialize, process_instruction
+from _variables import CURRENT_STATE, STACK, STATES, STEPS
 
 
 def excepthook(type, value, traceback):
@@ -19,13 +20,15 @@ def excepthook(type, value, traceback):
 
 sys.excepthook = excepthook
 
-CURRENT_STATE: State = State()
-STEPS: List[Step] = []
-
 
 def michelson_interpreter(
     script: io.TextIOWrapper, parameter: str, storage: str, state: State
 ):
+    global CURRENT_STATE
+    global STACK
+    global STATES
+    global STEPS
+
     CURRENT_STATE = state
     s = subprocess.run(
         ["./ext/michelson-parser-wrapper/bin/michelson-parser.js"],
@@ -37,10 +40,25 @@ def michelson_interpreter(
     if len(s) > 1:
         raise Exception("Multiple parsings!")
     s = json.loads(s[0])
-    p_raw, s_raw, c_raw = s[0], s[1], s[2]
-    pprint.pp(p_raw)
+    parameter_type, storage_type, code = (
+        s[0],
+        s[1],
+        flatten(flatten(s[2]["args"])),
+    )
+    STACK.append(
+        initialize(parameter_type["args"][0], parameter, storage_type["args"][0], storage)
+    )
+    STATES.append(copy.deepcopy(CURRENT_STATE))
+    STEPS.append(Step(Delta([], [STACK[0]]), [parameter_type, storage_type], STACK))
+
+    for i in code:
+        step = process_instruction(i, STACK)
+        if step is not None and "IF" not in i["prim"]:
+            STEPS.append(step)
+
+    print(STEPS)
 
 
 if __name__ == "__main__":
     with open(sys.argv[1], encoding="utf-8") as f:
-        michelson_interpreter(f, "...", "...", State())
+        michelson_interpreter(f, sys.argv[2], sys.argv[3], State())

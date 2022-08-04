@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-
+import copy
 from dataclasses import dataclass, field
 
 
@@ -78,3 +78,6 @@ class Step:
     delta: Delta
     instruction: list = field(default_factory=list)
     stack: list[Data] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.stack = copy.deepcopy(self.stack)

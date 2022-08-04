@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-
 import ast
 from copy import deepcopy
 from datetime import datetime
@@ -8,22 +7,22 @@ from hashlib import blake2b, sha256, sha512
 import json
 from math import trunc
 import re
-from sys import flags
 from time import time
 from typing import Any, Dict, List
 
 from base58 import b58encode_check
 
+from _variables import CURRENT_STATE
 from _types import CustomException, Data, Delta, State, Step
 
 
 def initialize(
     parameter_type: Dict[str, Any], parameter: str, storage_type: dict, storage: str
 ) -> Data:
-    parameter_result: Data = locals()["parse" + parameter_type["prim"].upper()](
+    parameter_result: Data = globals()["parse" + parameter_type["prim"].upper()](
         parameter_type["args"], parameter
     )
-    storage_result: Data = locals()["parse" + storage_type["prim"].upper()](
+    storage_result: Data = globals()["parse" + storage_type["prim"].upper()](
         storage_type["args"], storage
     )
     return Data("pair", [parameter_result, storage_result])
@@ -81,7 +80,7 @@ def get_instruction_requirements(instruction: str) -> Dict[str, bool | List[List
     match instruction:
         case ("ABS" | "EQ" | "GE" | "GT" | "ISNAT" | "LE" | "LT" | "NEQ"):
             requirements["multiple"] = False
-            requirements["l"].extend([["int"]])
+            requirements["l"].extend(["int"])
         case "ADD":
             requirements["multiple"] = True
             requirements["l"].extend(
@@ -97,7 +96,7 @@ def get_instruction_requirements(instruction: str) -> Dict[str, bool | List[List
             )
         case "ADDRESS":
             requirements["multiple"] = False
-            requirements["l"].extend([["contract"]])
+            requirements["l"].extend(["contract"])
         case (
             "AMOUNT"
             | "APPLY"  # TODO: how to figure out ty1, ty2 and ty3?
@@ -125,156 +124,146 @@ def get_instruction_requirements(instruction: str) -> Dict[str, bool | List[List
             | "UNIT"
         ):
             requirements["multiple"] = False
-            requirements["l"].extend([[None]])
+            requirements["l"].extend([None])
         case "AND":
             requirements["multiple"] = True
-            requirements["l"].extend(
-                [[["bool", "bool"], ["nat", "nat"], ["int", "nat"]]]
-            )
+            requirements["l"].extend([["bool", "bool"], ["nat", "nat"], ["int", "nat"]])
         case "BLAKE2B" | "SHA256" | "SHA512" | "UNPACK":
             requirements["multiple"] = False
-            requirements["l"].extend([["bytes"]])
+            requirements["l"].extend(["bytes"])
         case "CAR" | "CDR":
             requirements["multiple"] = False
-            requirements["l"].extend([["pair"]])
+            requirements["l"].extend(["pair"])
         case "CHECK_SIGNATURE":
             requirements["multiple"] = False
-            requirements["l"].extend([["key", "signature", "bytes"]])
+            requirements["l"].extend(["key", "signature", "bytes"])
         case "CONCAT":
             # TODO: how to figure out that the type of list is either string or bytes?
             requirements["multiple"] = True
             requirements["l"].extend(
-                [[["string", "string"], ["bytes", "bytes"], ["list"]]]
+                [["string", "string"], ["bytes", "bytes"], ["list"]]
             )
         case "CONS":
             requirements["multiple"] = False
-            requirements["l"].extend([["", "list"]])
+            requirements["l"].extend(["", "list"])
         case "CONTRACT":
             requirements["multiple"] = False
-            requirements["l"].extend([["address"]])
+            requirements["l"].extend(["address"])
         case "EDIV":
             requirements["multiple"] = True
             requirements["l"].extend(
                 [
-                    [
-                        ["nat", "nat"],
-                        ["nat", "int"],
-                        ["int", "nat"],
-                        ["int", "int"],
-                        ["mutez", "nat"],
-                        ["mutez", "mutez"],
-                    ]
+                    ["nat", "nat"],
+                    ["nat", "int"],
+                    ["int", "nat"],
+                    ["int", "int"],
+                    ["mutez", "nat"],
+                    ["mutez", "mutez"],
                 ]
             )
         case "EXEC":
             # TODO: how to determine ty1 and lambda's type match?
             requirements["multiple"] = False
-            requirements["l"].extend([["", "lambda"]])
+            requirements["l"].extend(["", "lambda"])
         case "GET":
             requirements["multiple"] = True
-            requirements["l"].extend([[["", "map"], ["", "big_map"]]])
+            requirements["l"].extend([["", "map"], ["", "big_map"]])
         case "HASH_KEY":
             requirements["multiple"] = False
-            requirements["l"].extend([["key"]])
+            requirements["l"].extend(["key"])
         case "IF":
             requirements["multiple"] = False
-            requirements["l"].extend([["bool"]])
+            requirements["l"].extend(["bool"])
         case "IF_CONS":
             requirements["multiple"] = False
-            requirements["l"].extend([["list"]])
+            requirements["l"].extend(["list"])
         case "IF_LEFT":
             requirements["multiple"] = False
-            requirements["l"].extend([["or"]])
+            requirements["l"].extend(["or"])
         case "IF_NONE" | "SET_DELEGATE":
             requirements["multiple"] = False
-            requirements["l"].extend([["option"]])
+            requirements["l"].extend(["option"])
         case "IMPLICIT_ACCOUNT":
             requirements["multiple"] = False
-            requirements["l"].extend([["key_hash"]])
+            requirements["l"].extend(["key_hash"])
         case "INT":
             requirements["multiple"] = True  # TODO: check why is this True?
-            requirements["l"].extend([[["nat"]]])
+            requirements["l"].extend(["nat"])
         case "ITER":
             requirements["multiple"] = True
-            requirements["l"].extend([[["list"], ["set"], ["map"]]])
+            requirements["l"].extend([["list"], ["set"], ["map"]])
         case "LSL" | "LSR":
             requirements["multiple"] = False
             requirements["l"].extend([["nat", "nat"]])
         case "MAP":
             requirements["multiple"] = True
-            requirements["l"].extend([[["list"], ["map"]]])
+            requirements["l"].extend([["list"], ["map"]])
         case "MEM":
             requirements["multiple"] = True
-            requirements["l"].extend([[["", "set"], ["", "map"], ["", "big_map"]]])
+            requirements["l"].extend([["", "set"], ["", "map"], ["", "big_map"]])
         case "MUL":
             requirements["multiple"] = True
             requirements["l"].extend(
                 [
-                    [
-                        ["nat", "nat"],
-                        ["nat", "int"],
-                        ["int", "nat"],
-                        ["int", "int"],
-                        ["mutez", "nat"],
-                        ["nat", "mutez"],
-                    ]
+                    ["nat", "nat"],
+                    ["nat", "int"],
+                    ["int", "nat"],
+                    ["int", "int"],
+                    ["mutez", "nat"],
+                    ["nat", "mutez"],
                 ]
             )
         case "NEG":
             requirements["multiple"] = True
-            requirements["l"].extend([[["nat"], ["int"]]])
+            requirements["l"].extend([["nat"], ["int"]])
         case "NOT":
             requirements["multiple"] = True
-            requirements["l"].extend([[["bool"], ["nat"], ["int"]]])
+            requirements["l"].extend([["bool"], ["nat"], ["int"]])
         case "OR" | "XOR":
             requirements["multiple"] = True
-            requirements["l"].extend([[["bool", "bool"], ["nat", "nat"]]])
+            requirements["l"].extend([["bool", "bool"], ["nat", "nat"]])
         case "PACK" | "LEFT" | "RIGHT" | "SOME" | "SOURCE":  # TODO: how to determine ty1?
             requirements["multiple"] = False
-            requirements["l"].extend([[""]])
+            requirements["l"].extend([""])
         case "COMPARE":
             requirements["multiple"] = False
-            requirements["l"].extend([["SAME", "SAME"]])
+            requirements["l"].extend(["SAME", "SAME"])
         case "PAIR" | "SWAP":  # TODO: how to determine ty1 & ty2? && there's a PAIR n version now that's not represented here
             requirements["multiple"] = False
-            requirements["l"].extend([["", ""]])
+            requirements["l"].extend(["", ""])
         case "SIZE":
             requirements["multiple"] = True
             requirements["l"].extend(
-                [[["set"], ["map"], ["list"], ["string"], ["bytes"]]]
+                [["set"], ["map"], ["list"], ["string"], ["bytes"]]
             )
         case "SLICE":
             requirements["multiple"] = True
             requirements["l"].extend(
-                [[["nat", "nat", "string"], ["nat", "nat", "bytes"]]]
+                [["nat", "nat", "string"], ["nat", "nat", "bytes"]]
             )
         case "SUB":
             requirements["multiple"] = True
             requirements["l"].extend(
                 [
-                    [
-                        ["nat", "nat"],
-                        ["nat", "int"],
-                        ["int", "nat"],
-                        ["int", "int"],
-                        ["timestamp", "int"],
-                        ["timestamp", "timestamp"],
-                        ["mutez", "mutez"],
-                    ]
+                    ["nat", "nat"],
+                    ["nat", "int"],
+                    ["int", "nat"],
+                    ["int", "int"],
+                    ["timestamp", "int"],
+                    ["timestamp", "timestamp"],
+                    ["mutez", "mutez"],
                 ]
             )
         case "TRANSFER_TOKENS":
             requirements["multiple"] = False
-            requirements["l"].extend([["", "mutez", "contract"]])
+            requirements["l"].extend(["", "mutez", "contract"])
         case "UPDATE":
             requirements["multiple"] = True
             requirements["l"].extend(
                 [
-                    [
-                        ["", "bool", "set"],
-                        ["", "option", "map"],
-                        ["", "option", "big_map"],
-                    ]
+                    ["", "bool", "set"],
+                    ["", "option", "map"],
+                    ["", "option", "big_map"],
                 ]
             )
         case _:
@@ -323,11 +312,11 @@ def applyABS(instruction, parameters, stack: List[Data]) -> Data:
 
 def applyADD(instruction, parameters, stack: List[Data]) -> Data:
     output = Data("", [str(int(parameters[0].value[0]) + int(parameters[1].value[0]))])
-    match parameters[0].prim:
+    match parameters[0]["prim"]:
         case "nat":
-            output.prim = "nat" if parameters[1].prim is "nat" else "int"
+            output.prim = "nat" if parameters[1]["prim"] == "nat" else "int"
         case "int":
-            output.prim = "timestamp" if parameters[1].prim is "timestamp" else "int"
+            output.prim = "timestamp" if parameters[1]["prim"] == "timestamp" else "int"
         case "timestamp":
             output.prim = "timestamp"
         case "mutez":
@@ -344,11 +333,11 @@ def applyADDRESS(instruction, parameters, stack: List[Data]):
 
 
 def applyAMOUNT(instruction, parameters, stack: List[Data]) -> Data:
-    return Data("mutez", [str(globals()["CURRENT_STATE"].amount)])
+    return Data("mutez", [str(CURRENT_STATE.amount)])
 
 
 def applyAND(instruction, parameters, stack: List[Data]) -> Data:
-    match parameters[0].prim:
+    match parameters[0]["prim"]:
         case "bool":
             return Data(
                 "bool",
@@ -373,7 +362,7 @@ def applyAPPLY(instruction, parameters, stack: List[Data]) -> Data:
 
 
 def applyBALANCE(instruction, parameters, stack: List[Data]) -> Data:
-    return Data("mutez", [str(globals()["CURRENT_STATE"].amount)])
+    return Data("mutez", [str(CURRENT_STATE.amount)])
 
 
 def applyBLAKE2B(instruction, parameters, stack: List[Data]) -> Data:
@@ -405,7 +394,7 @@ def applyCOMPARE(instruction, parameters, stack: List[Data]) -> Data:
             "can't compare non-Comparable types", [instruction, parameters]
         )
     output = Data("int", [])
-    match parameters[0].prim:
+    match parameters[0]["prim"]:
         case "nat" | "int" | "mutez" | "timestamp":
             z1 = int(parameters[0].value[0])
             z2 = int(parameters[1].value[0])
@@ -439,19 +428,19 @@ def applyCOMPARE(instruction, parameters, stack: List[Data]) -> Data:
 
 def applyCONCAT(instruction, parameters, stack: List[Data]) -> Data:
     value = ""
-    if parameters[0].prim != "list":
+    if parameters[0]["prim"] != "list":
         value = parameters[0].value[0] + parameters[1].value[0]
-        return Data("string" if parameters[0].prim == "string" else "bytes", [value])
+        return Data("string" if parameters[0]["prim"] == "string" else "bytes", [value])
     else:
         for i in parameters[0].value[0]:
             value += i.value[0]
         return Data(
-            "string" if parameters[0].listType.prim == "string" else "bytes", [value]
+            "string" if parameters[0].listType["prim"] == "string" else "bytes", [value]
         )
 
 
 def applyCONS(instruction, parameters, stack: List[Data]):
-    if parameters[0].prim != parameters[1].listType.prim:
+    if parameters[0]["prim"] != parameters[1].listType["prim"]:
         raise CustomException(
             "list type and element type are not same", [instruction, parameters]
         )
@@ -463,7 +452,7 @@ def applyCONS(instruction, parameters, stack: List[Data]):
 def applyCONTRACT(instruction, parameters, stack: List[Data]) -> Data:
     # Not implemented completely
     c = Data("contract", [parameters[0]])
-    setattr(c, "contractType", instruction.args[0])
+    setattr(c, "contractType", instruction["args"][0])
     output = Data("option", [c])
     setattr(output, "optionValue", "Some")
     setattr(output, "optionType", ["contract"])
@@ -476,31 +465,28 @@ def applyCREATE_CONTRACT(instruction, parameters, stack: List[Data]) -> List[Dat
 
 
 def applyDIG(instruction, parameters, stack: List[Data]) -> None:
-    if instruction.args[0].int != 0:
-        if instruction.args[0].int > len(stack) - 1:
+    if instruction["args"][0].int != 0:
+        if instruction["args"][0].int > len(stack) - 1:
             raise CustomException(
                 "not enough elements in the stack", [instruction, parameters]
             )
         arrayMoveMutable(
-            stack, len(stack) - 1 - instruction.args[0].int, len(stack) - 1
+            stack, len(stack) - 1 - instruction["args"][0].int, len(stack) - 1
         )
     return None
 
 
 def applyDIP(instruction, parameters, stack: List[Data]) -> None:
     n = 1
-    if hasattr(instruction.args[0], "int"):
-        n = int(instruction.args[0].int)
-        instruction.args.pop(0)
+    if hasattr(instruction["args"][0], "int"):
+        n = int(instruction["args"][0].int)
+        instruction["args"].pop(0)
     if n + 1 > len(stack):
         raise CustomException("not enough elements in stack", [instruction, parameters])
     p: List[Data] = []
     for i in range(n):
         p.insert(0, stack.pop())
-    for i in [
-        x for xs in instruction.args for x in xs
-    ]:  # TODO: Test this JS Array.flat equivalent from
-        # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+    for i in flatten(instruction["args"]):
         step = process_instruction(i, stack)
         if "IF" not in i.prim:
             globals()["STEPS"].append(step)
@@ -510,7 +496,7 @@ def applyDIP(instruction, parameters, stack: List[Data]) -> None:
 
 
 def applyDROP(instruction, parameters, stack: List[Data]) -> None:
-    n = int(instruction.args[0].int) if hasattr(instruction, "args") else 1
+    n = int(instruction["args"][0].int) if hasattr(instruction, "args") else 1
     if n > len(stack):
         raise CustomException(
             "not enough elements in the stack", [instruction, parameters]
@@ -522,7 +508,7 @@ def applyDROP(instruction, parameters, stack: List[Data]) -> None:
 
 
 def applyDUG(instruction, parameters, stack: List[Data]) -> None:
-    n = int(instruction.args[0].int)
+    n = int(instruction["args"][0].int)
     if n == 0:
         return None
     if n >= len(stack):
@@ -535,10 +521,10 @@ def applyDUG(instruction, parameters, stack: List[Data]) -> None:
 
 
 def applyDUP(instruction, parameters, stack: List[Data]) -> Data:
-    n = int(instruction.args[0].int) if hasattr(instruction, "args") else 1
+    n = int(instruction["args"][0].int) if hasattr(instruction, "args") else 1
     if n == 0:
         raise CustomException(
-            "non-allowed value for " + instruction.prim + ": " + instruction.args,
+            "non-allowed value for " + instruction["prim"] + ": " + instruction["args"],
             [instruction, parameters],
         )
     if n > len(stack):
@@ -565,9 +551,9 @@ def applyEDIV(instruction, parameters, stack: List[Data]) -> Data:
     t1 = ""
     t2 = ""
 
-    match parameters[0].prim:
+    match parameters[0]["prim"]:
         case "nat":
-            if parameters[1].prim == "nat":
+            if parameters[1]["prim"] == "nat":
                 t1 = "nat"
                 t2 = "nat"
             else:
@@ -577,7 +563,7 @@ def applyEDIV(instruction, parameters, stack: List[Data]) -> Data:
             t1 = "int"
             t2 = "nat"
         case "mutez":
-            if parameters[1].prim == "nat":
+            if parameters[1]["prim"] == "nat":
                 t1 = "mutez"
             else:
                 t1 = "nat"
@@ -587,29 +573,29 @@ def applyEDIV(instruction, parameters, stack: List[Data]) -> Data:
 
 
 def applyEMPTY_BIG_MAP(instruction, parameters, stack: List[Data]) -> Data:
-    if "C" not in Data(instruction.args[0].prim).attributes:
+    if "C" not in Data(instruction["args"][0]["prim"]).attributes:
         raise CustomException("kty is not comparable", [instruction, parameters])
-    elif {instruction.args[1].prim}.issubset({"operation", "big_map"}):
+    elif {instruction["args"][1]["prim"]}.issubset({"operation", "big_map"}):
         raise CustomException(
-            "vty is " + instruction.args[1].prim, [instruction, parameters]
+            "vty is " + instruction["args"][1]["prim"], [instruction, parameters]
         )
     output = Data("big_map", [dict()])
-    setattr(output, "keyType", instruction.args[0])
-    setattr(output, "valueType", instruction.args[1])
+    setattr(output, "keyType", instruction["args"][0])
+    setattr(output, "valueType", instruction["args"][1])
     return output
 
 
 def applyEMPTY_MAP(instruction, parameters, stack: List[Data]) -> Data:
-    if "C" not in Data(instruction.args[0].prim).attributes:
+    if "C" not in Data(instruction["args"][0]["prim"]).attributes:
         raise CustomException("kty is not comparable", [instruction, parameters])
-    return Data("map", [instruction.args[0].prim, instruction.args[1].prim])
+    return Data("map", [instruction["args"][0]["prim"], instruction["args"][1]["prim"]])
 
 
 def applyEMPTY_SET(instruction, parameters, stack: List[Data]) -> Data:
-    if "C" not in Data(instruction.args[0].prim).attributes:
+    if "C" not in Data(instruction["args"][0]["prim"]).attributes:
         raise CustomException("kty is not comparable", [instruction, parameters])
     output = Data("set", [set()])
-    setattr(output, "setType", instruction.args[0])
+    setattr(output, "setType", instruction["args"][0])
     return output
 
 
@@ -646,7 +632,7 @@ def applyGE(instruction, parameters, stack: List[Data]) -> Data:
 
 def applyGET(instruction, parameters, stack: List[Data]) -> Data:
     output = Data("option", [])
-    setattr(output, "optionType", [parameters[1].keyType.prim])
+    setattr(output, "optionType", [parameters[1].keyType["prim"]])
     if parameters[0].value[0] in parameters[1].value[0]:
         setattr(output, "optionValue", "Some")
         output.value.append(parameters[1].value[0].get(parameters[0].value[0]))
@@ -668,18 +654,12 @@ def applyHASH_KEY(instruction, parameters, stack: List[Data]) -> Data:
 
 def applyIF(instruction, parameters, stack: List[Data]) -> None:
     if parameters[0].value[0].lower() == "true":
-        for i in [
-            x for xs in instruction.args[0] for x in xs
-        ]:  # TODO: Test this JS Array.flat equivalent from
-            # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+        for i in flatten(instruction["args"][0]):
             step = process_instruction(i, stack)
             if "IF" not in i.prim:
                 globals()["STEPS"].append(step)
     else:
-        for i in [
-            x for xs in instruction.args[1] for x in xs
-        ]:  # TODO: Test this JS Array.flat equivalent from
-            # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+        for i in flatten(instruction["args"][1]):
             step = process_instruction(i, stack)
             if "IF" not in i.prim:
                 globals()["STEPS"].append(step)
@@ -694,10 +674,7 @@ def applyIF_CONS(instruction, parameters, stack: List[Data]) -> None:
         branch = 0
     else:
         branch = 1
-    for i in [
-        x for xs in instruction.args[branch] for x in xs
-    ]:  # TODO: Test this JS Array.flat equivalent from
-        # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+    for i in flatten(instruction["args"][branch]):
         step = process_instruction(i, stack)
         if "IF" not in i.prim:
             globals()["STEPS"].append(step)
@@ -707,10 +684,7 @@ def applyIF_CONS(instruction, parameters, stack: List[Data]) -> None:
 def applyIF_LEFT(instruction, parameters, stack: List[Data]) -> None:
     stack.append(parameters[0].value[0])
     branch = 0 if parameters[0].orValue == "Left" else 1
-    for i in [
-        x for xs in instruction.args[branch] for x in xs
-    ]:  # TODO: Test this JS Array.flat equivalent from
-        # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+    for i in flatten(instruction["args"][branch]):
         step = process_instruction(i, stack)
         if "IF" not in i.prim:
             globals()["STEPS"].append(step)
@@ -723,10 +697,7 @@ def applyIF_NONE(instruction, parameters, stack: List[Data]) -> None:
     else:
         branch = 1
         stack.append(parameters[0].value[0])
-    for i in [
-        x for xs in instruction.args[branch] for x in xs
-    ]:  # TODO: Test this JS Array.flat equivalent from
-        # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+    for i in flatten(instruction["args"][branch]):
         step = process_instruction(i, stack)
         if "IF" not in i.prim:
             globals()["STEPS"].append(step)
@@ -776,7 +747,7 @@ def applyLE(instruction, parameters, stack: List[Data]) -> Data:
 def applyLEFT(instruction, parameters, stack: List[Data]) -> Data:
     output = Data("or", [parameters[0]])
     setattr(output, "orValue", "Left")
-    setattr(output, "orType", [parameters[0].prim, instruction.args[0].prim])
+    setattr(output, "orType", [parameters[0]["prim"], instruction["args"][0]["prim"]])
     return output
 
 
@@ -790,10 +761,7 @@ def applyLOOP(instruction, parameters, stack: List[Data]) -> None:
     else:
         v = top.value[0].lower() == "true"
     while v:
-        for i in [
-            x for xs in instruction.args for x in xs
-        ]:  # TODO: Test this JS Array.flat equivalent from
-            # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+        for i in flatten(instruction["args"]):
             step = process_instruction(i, stack)
             if "IF" not in i.prim:
                 globals()["STEPS"].append(step)
@@ -820,10 +788,7 @@ def applyLOOP_LEFT(instruction, parameters, stack: List[Data]) -> None:
     else:
         v = True
     while v:
-        for i in [
-            x for xs in instruction.args for x in xs
-        ]:  # TODO: Test this JS Array.flat equivalent from
-            # https://stackoverflow.com/questions/952914/how-do-i-make-a-flat-list-out-of-a-list-of-lists
+        for i in flatten(instruction["args"]):
             step = process_instruction(i, stack)
             if "IF" not in i.prim:
                 globals()["STEPS"].append(step)
@@ -865,7 +830,7 @@ def applyMAP(instruction, parameters, stack: List[Data]):
     new_list = []
     for _ in range(len(parameters[0].value[0])):
         stack.append(parameters[0].value[0].pop(0))
-        for j in instruction.args[::-1]:
+        for j in instruction["args"][::-1]:
             step = process_instruction(j, stack)
             if "IF" not in j.prim:
                 globals()["STEPS"].append(step)
@@ -876,9 +841,9 @@ def applyMAP(instruction, parameters, stack: List[Data]):
 
 def applyMEM(instruction, parameters, stack: List[Data]) -> Data:
     if (
-        parameters[1].prim in ["big_map", "map"]
-        and parameters[1].keyType != parameters[0].prim
-    ) or parameters[1].setType != parameters[0].prim:
+        parameters[1]["prim"] in ["big_map", "map"]
+        and parameters[1].keyType != parameters[0]["prim"]
+    ) or parameters[1].setType != parameters[0]["prim"]:
         raise CustomException(
             "key or element type does not match", [instruction, parameters]
         )
@@ -893,9 +858,9 @@ def applyMUL(instruction, parameters, stack: List[Data]) -> Data:
     z2 = int(parameters[1].value[0])
     t = ""
 
-    match parameters[0].prim:
+    match parameters[0]["prim"]:
         case "nat":
-            t = parameters[1].prim
+            t = parameters[1]["prim"]
         case "int":
             t = "int"
         case "mutez":
@@ -915,7 +880,7 @@ def applyNIL(instruction, parameters, stack: List[Data]) -> Data:
     if not hasattr(instruction, "args"):
         raise CustomException("type of list is not declared", [instruction, parameters])
     output = Data("list", [[]])
-    setattr(output, "listType", instruction.args[0])
+    setattr(output, "listType", instruction["args"][0])
     return output
 
 
@@ -924,14 +889,14 @@ def applyNONE(instruction, parameters, stack: List[Data]) -> Data:
         raise CustomException(
             "type of option is not declared", [instruction, parameters]
         )
-    output = Data("option", [instruction.args[0].prim])
+    output = Data("option", [instruction["args"][0]["prim"]])
     setattr(output, "optionValue", "None")
-    setattr(output, "optionType", instruction.args)
+    setattr(output, "optionType", instruction["args"])
     return output
 
 
 def applyNOT(instruction, parameters, stack: List[Data]) -> Data:
-    match parameters[0].prim:
+    match parameters[0]["prim"]:
         case "int" | "nat":
             return Data("int", [str(~int(parameters[0].value[0]))])
         case "bool":
@@ -945,7 +910,7 @@ def applyNOW(instruction, parameters, stack: List[Data]) -> Data:
 
 
 def applyOR(instruction, parameters, stack: List[Data]) -> Data:
-    if parameters[0].prim == "bool":
+    if parameters[0]["prim"] == "bool":
         return Data(
             "bool",
             [
@@ -977,57 +942,57 @@ def applyPAIR(instruction, parameters, stack: List[Data]) -> Data:
 
 
 def applyPUSH(instruction, parameters, stack: List[Data]) -> Data:
-    output = Data(instruction.args[0].prim, [])
-    match instruction.args[0].prim:
+    output = Data(instruction["args"][0]["prim"], [])
+    match instruction["args"][0]["prim"]:
         case "list":
             output.value.append([])
-            setattr(output, "listType", instruction.args[0].args[0])
-            for i in range(1, len(instruction.args)):
+            setattr(output, "listType", instruction["args"][0]["args"][0])
+            for i in range(1, len(instruction["args"])):
                 v0 = Data(
-                    getattr(output, "listType").prim,
+                    getattr(output, "listType")["prim"],
                     [
-                        instruction.args[i].int
-                        or instruction.args[i].string
-                        or instruction.args[i].bytes
-                        or instruction.args[i].prim
+                        instruction["args"][i]["int"]
+                        or instruction["args"][i]["string"]
+                        or instruction["args"][i]["bytes"]
+                        or instruction["args"][i]["prim"]
                     ],
                 )
                 output.value[0].append(v0)
         case "option":
-            setattr(output, "optionValue", instruction.args[1].prim)
-            setattr(output, "optionType", [instruction.args[0].args[0]])
+            setattr(output, "optionValue", instruction["args"][1]["prim"])
+            setattr(output, "optionType", [instruction["args"][0]["args"][0]])
             if getattr(output, "optionValue") != "None":
                 v1 = Data(
-                    getattr(output, "optionType")[0].prim,
+                    getattr(output, "optionType")[0]["prim"],
                     [
-                        instruction.args[1].args[0].int
-                        or instruction.args[1].args[0].string
-                        or instruction.args[1].args[0].bytes
-                        or instruction.args[1].args[0].prim
+                        instruction["args"][1]["args"][0]["int"]
+                        or instruction["args"][1]["args"][0]["string"]
+                        or instruction["args"][1]["args"][0]["bytes"]
+                        or instruction["args"][1]["args"][0]["prim"]
                     ],
                 )
                 output.value.append(v1)
         case "or":
-            setattr(output, "orValue", instruction.args[1].prim)
-            setattr(output, "orType", instruction.args[0].args)
+            setattr(output, "orValue", instruction["args"][1]["prim"])
+            setattr(output, "orType", instruction["args"][0]["args"])
             v2 = Data(
-                getattr(output, "orType")[0].prim
+                getattr(output, "orType")[0]["prim"]
                 if getattr(output, "orValue") == "Left"
-                else getattr(output, "orType")[1].prim,
+                else getattr(output, "orType")[1]["prim"],
                 [
-                    instruction.args[1].args[0].int
-                    or instruction.args[1].args[0].string
-                    or instruction.args[1].args[0].bytes
-                    or instruction.args[1].args[0].prim
+                    instruction["args"][1]["args"][0]["int"]
+                    or instruction["args"][1]["args"][0]["string"]
+                    or instruction["args"][1]["args"][0]["bytes"]
+                    or instruction["args"][1]["args"][0]["prim"]
                 ],
             )
             output.value.append(v2)
         case _:
             value = (
-                instruction.args[1].int
-                or instruction.args[1].string
-                or instruction.args[1].bytes
-                or instruction.args[1].prim
+                instruction["args"][1]["int"]
+                or instruction["args"][1]["string"]
+                or instruction["args"][1]["bytes"]
+                or instruction["args"][1]["prim"]
             )
             output.value.append(value)
     return output
@@ -1036,7 +1001,7 @@ def applyPUSH(instruction, parameters, stack: List[Data]) -> Data:
 def applyRIGHT(instruction, parameters, stack: List[Data]) -> Data:
     output = Data("or", [parameters[0]])
     setattr(output, "orValue", "Right")
-    setattr(output, "orType", [instruction.args[0].prim, parameters[0].prim])
+    setattr(output, "orType", [instruction["args"][0]["prim"], parameters[0]["prim"]])
     return output
 
 
@@ -1074,13 +1039,13 @@ def applySLICE(instruction, parameters, stack: List[Data]) -> Data:
     _len = int(parameters[1].value[0])
     _str = parameters[2].value[0]
     output = Data("option", [])
-    setattr(output, "optionType", [parameters[2].prim])
+    setattr(output, "optionType", [parameters[2]["prim"]])
     if len(_str) == 0 or offset >= len(_str) or offset + _len > len(_str):
         setattr(output, "optionValue", "None")
     elif offset < len(_str) and offset + _len <= len(_str):
         setattr(output, "optionValue", "Some")
         output.value.append(
-            Data(parameters[2].prim, [_str[slice(offset, offset + _len)]])
+            Data(parameters[2]["prim"], [_str[slice(offset, offset + _len)]])
         )
     return output
 
@@ -1090,13 +1055,13 @@ def applySOME(instruction, parameters, stack: List[Data]) -> Data:
         raise CustomException(
             "type of option is not declared", [instruction, parameters]
         )
-    elif instruction.args[0].prim != parameters[0].prim:
+    elif instruction["args"][0]["prim"] != parameters[0]["prim"]:
         raise CustomException(
             "stack value and option type doesn't match", [instruction, parameters]
         )
     output = Data("option", [parameters[0]])
     setattr(output, "optionValue", "Some")
-    setattr(output, "optionType", [instruction.args[0].prim])
+    setattr(output, "optionType", [instruction["args"][0]["prim"]])
     return output
 
 
@@ -1106,7 +1071,7 @@ def applySOURCE(instruction, parameters, stack: List[Data]) -> Data:
 
 
 def applySUB(instruction, parameters, stack: List[Data]) -> Data:
-    if "timestamp" in [parameters[0].prim, parameters[1].prim] and (
+    if "timestamp" in [parameters[0]["prim"], parameters[1]["prim"]] and (
         re.match(r"[a-z]", parameters[0].value[0], flags=re.I)
         or re.match(r"[a-z]", parameters[1].value[0], flags=re.I)
     ):
@@ -1119,11 +1084,11 @@ def applySUB(instruction, parameters, stack: List[Data]) -> Data:
     z2 = int(parameters[1].value[0])
     t = ""
 
-    match parameters[0].prim:
+    match parameters[0]["prim"]:
         case "nat" | "int":
             t = "int"
         case "timestamp":
-            t = "timestamp" if parameters[1].prim == "int" else "int"
+            t = "timestamp" if parameters[1]["prim"] == "int" else "int"
         case "mutez":
             t = "mutez"
 
@@ -1149,32 +1114,32 @@ def applyUNPACK(instruction, parameters, stack: List[Data]) -> Data:
         json.dumps(bytes.fromhex(parameters[0].value[0]).decode("utf-8"))
     )
     output = Data("option", [])
-    i = Data(instruction.args[0].prim, [])
+    i = Data(instruction["args"][0]["prim"], [])
     # Don't know why this check is here
-    if hasattr(instruction.args[0], "args") and all(
+    if hasattr(instruction["args"][0], "args") and all(
         y == v[x].prim
-        for x, y in enumerate(map(lambda x: x.prim, instruction.args[0].args))
+        for x, y in enumerate(map(lambda x: x.prim, instruction["args"][0]["args"]))
     ):
         i.value = v
     else:
         i.value = v
     # Not implemented
     setattr(output, "optionValue", "Some")
-    setattr(output, "optionType", [instruction.args[0].prim])
+    setattr(output, "optionType", [instruction["args"][0]["prim"]])
     output.value.append(i)
     return output
 
 
 def applyUPDATE(instruction, parameters, stack: List[Data]):
-    if parameters[1].prim == "bool":
-        if parameters[0].prim != parameters[2].setType:
+    if parameters[1]["prim"] == "bool":
+        if parameters[0]["prim"] != parameters[2].setType:
             raise CustomException("set type does not match", [instruction, parameters])
         if parameters[1].value[0].lower() == "true":
             parameters[2].value[0].add(parameters[2].value)
         else:
             parameters[2].value[0].remove(parameters[2].value)
     else:
-        if parameters[0].prim != parameters[2].keyType:
+        if parameters[0]["prim"] != parameters[2].keyType:
             raise CustomException("key type does not match", [instruction, parameters])
         if parameters[1].optionValue == "Some":
             if parameters[1].optionType[0] != parameters[2].valueType:
@@ -1188,7 +1153,7 @@ def applyUPDATE(instruction, parameters, stack: List[Data]):
 
 
 def applyXOR(instruction, parameters, stack: List[Data]) -> Data:
-    if parameters[0].prim == "bool":
+    if parameters[0]["prim"] == "bool":
         return Data(
             "bool",
             [str(parameters[0].value[0].lower() != parameters[1].value[0].lower())],
@@ -1234,7 +1199,7 @@ def parseBIG_MAP(args, value) -> Data:
                 "input doesn't match with the specified types", [args, value]
             )
         # r[1] is the key, and r[2] is the value
-        match getattr(output, "keyType").prim:
+        match getattr(output, "keyType")["prim"]:
             case (
                 "int" | "mutez" | "nat" | "timestamp" | "bytes" | "signature" | "bool"
             ):
@@ -1246,8 +1211,8 @@ def parseBIG_MAP(args, value) -> Data:
             case _:
                 raise CustomException("not implemented", [args, value])
         output.value[0][r[1]] = globals()[
-            "parse" + getattr(output, "valueType").prim.upper()
-        ](args[1].args, r[2])
+            "parse" + getattr(output, "valueType")["prim"].upper()
+        ](args[1]["args"], r[2])
     return output
 
 
@@ -1288,7 +1253,7 @@ def parseLIST(args, value) -> Data:
         elements.pop()
     for i in elements:
         output.value[0].append(
-            globals()["parse" + getattr(output, "listType").prim.upper()](args[0], i)
+            globals()["parse" + getattr(output, "listType")["prim"].upper()](args[0], i)
         )
     return output
 
@@ -1315,7 +1280,7 @@ def parseMAP(args, value) -> Data:
                 "input doesn't match with the specified types", [args, value]
             )
         # r[1] is the key, and r[2] is the value
-        match getattr(output, "keyType").prim:
+        match getattr(output, "keyType")["prim"]:
             case (
                 "int" | "mutez" | "nat" | "timestamp" | "bytes" | "signature" | "bool"
             ):
@@ -1327,8 +1292,8 @@ def parseMAP(args, value) -> Data:
             case _:
                 raise CustomException("not implemented", [args, value])
         output.value[0][r[1]] = globals()[
-            "parse" + getattr(output, "valueType").prim.upper()
-        ](args[1].args, r[2])
+            "parse" + getattr(output, "valueType")["prim"].upper()
+        ](args[1]["args"], r[2])
     return output
 
 
@@ -1343,7 +1308,7 @@ def parseNAT(args, value) -> Data:
 def parseOPTION(args, value) -> Data:
     # Currently no parameter type check is being done
     output = Data("option", [])
-    setattr(output, "optionType", [args[0].prim])
+    setattr(output, "optionType", [args[0]["prim"]])
     params = re.match(r"\s*\(\s*(?:(?:Some)\s+(.+)|(?:None)\s*)\s*\)\s*", value)
     if params is None:
         raise CustomException(
@@ -1373,9 +1338,9 @@ def parseOR(args, value) -> Data:
     setattr(output, "orType", args)
     output.value.append(
         Data(
-            getattr(output, "orType")[0].prim
+            getattr(output, "orType")[0]["prim"]
             if getattr(output, "orValue") == "Left"
-            else getattr(output, "orType")[1].prim,
+            else getattr(output, "orType")[1]["prim"],
             [params[2]],
         )
     )
@@ -1392,10 +1357,10 @@ def parsePAIR(args, value) -> Data:
             "input doesn't match with the specified types", [args, value]
         )
     output.value.append(
-        globals()["parse" + args[0].prim.upper()](args[0].args, params[1])
+        globals()["parse" + args[0]["prim"].upper()](args[0].get("args", []), params[1])
     )
     output.value.append(
-        globals()["parse" + args[1].prim.upper()](args[1].args, params[2])
+        globals()["parse" + args[1]["prim"].upper()](args[1].get("args", []), params[2])
     )
     return output
 
@@ -1413,7 +1378,7 @@ def parseSET(args, value) -> Data:
     if elements[len(elements) - 1] == "":
         elements.pop()
     for i in range(len(elements)):
-        match getattr(output, "setType").prim:
+        match getattr(output, "setType")["prim"]:
             case (
                 "int" | "mutez" | "nat" | "timestamp" | "bytes" | "signature" | "bool"
             ):
@@ -1474,3 +1439,14 @@ def arrayMoveMutable(l: List, from_index: int, to_index: int) -> None:
     if start_index >= 0 and start_index < len(l):
         end_index = len(l) + to_index if to_index < 0 else to_index
         l.insert(end_index, l.pop(from_index))
+
+
+def flatten(l: List) -> List:
+    o = []
+    for i in l:
+        if isinstance(i, list):
+            for j in i:
+                o.append(j)
+        else:
+            o.append(i)
+    return o
