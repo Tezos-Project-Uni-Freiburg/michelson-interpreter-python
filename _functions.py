@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 
 from base58 import b58encode_check
 
-from _variables import CURRENT_STATE
+from _variables import CURRENT_STATE, STEPS
 from _types import CustomException, Data, Delta, State, Step
 
 
@@ -61,11 +61,11 @@ def get_instruction_parameters(
         if req_size > len(stack):
             raise CustomException("not enough elements in the stack", [requirements])
         req_elems = stack[-req_size:][::-1]
-        if (
-            all(x == "SAME" for x in requirements["l"])
-            and len({x.prim for x in req_elems}) != 1
-        ):
-            raise CustomException("top elements are not of same type", [requirements])
+        if all(x == "SAME" for x in requirements["l"]):
+            if len({x.prim for x in req_elems}) != 1:
+                raise CustomException(
+                    "top elements are not of same type", [requirements]
+                )
         elif all(len(x) > 0 for x in requirements["l"]) and not all(
             y == req_elems[x].prim for x, y in enumerate(requirements["l"])
         ):
@@ -271,11 +271,10 @@ def get_instruction_requirements(instruction: str) -> Dict[str, bool | List[List
     return requirements
 
 
-def process_instruction(
-    instruction: Dict[Any, Any], stack: List[Data]
-) -> Step | None:  # added `| None` to suppress typing error for now
+def process_instruction(instruction: Dict[Any, Any], stack: List[Data]) -> Step:
+    global STEPS
     if "IF" in instruction["prim"]:
-        globals()["STEPS"].append(Step(Delta([], []), [instruction], stack))
+        STEPS.append(Step(Delta([], []), [instruction], stack))
     removed: List[Data] = []
     added: List[Data] = []
     parameters = get_instruction_parameters(
@@ -333,6 +332,7 @@ def applyADDRESS(instruction, parameters, stack: List[Data]):
 
 
 def applyAMOUNT(instruction, parameters, stack: List[Data]) -> Data:
+    global CURRENT_STATE
     return Data("mutez", [str(CURRENT_STATE.amount)])
 
 
@@ -362,6 +362,7 @@ def applyAPPLY(instruction, parameters, stack: List[Data]) -> Data:
 
 
 def applyBALANCE(instruction, parameters, stack: List[Data]) -> Data:
+    global CURRENT_STATE
     return Data("mutez", [str(CURRENT_STATE.amount)])
 
 
@@ -394,7 +395,7 @@ def applyCOMPARE(instruction, parameters, stack: List[Data]) -> Data:
             "can't compare non-Comparable types", [instruction, parameters]
         )
     output = Data("int", [])
-    match parameters[0]["prim"]:
+    match parameters[0].prim:
         case "nat" | "int" | "mutez" | "timestamp":
             z1 = int(parameters[0].value[0])
             z2 = int(parameters[1].value[0])
@@ -477,6 +478,7 @@ def applyDIG(instruction, parameters, stack: List[Data]) -> None:
 
 
 def applyDIP(instruction, parameters, stack: List[Data]) -> None:
+    global STEPS
     n = 1
     if hasattr(instruction["args"][0], "int"):
         n = int(instruction["args"][0].int)
@@ -489,7 +491,7 @@ def applyDIP(instruction, parameters, stack: List[Data]) -> None:
     for i in flatten(instruction["args"]):
         step = process_instruction(i, stack)
         if "IF" not in i.prim:
-            globals()["STEPS"].append(step)
+            STEPS.append(step)
     for i in p:
         stack.append(i)
     return None
@@ -653,20 +655,22 @@ def applyHASH_KEY(instruction, parameters, stack: List[Data]) -> Data:
 
 
 def applyIF(instruction, parameters, stack: List[Data]) -> None:
+    global STEPS
     if parameters[0].value[0].lower() == "true":
         for i in flatten(instruction["args"][0]):
             step = process_instruction(i, stack)
-            if "IF" not in i.prim:
-                globals()["STEPS"].append(step)
+            if "IF" not in i["prim"]:
+                STEPS.append(step)
     else:
         for i in flatten(instruction["args"][1]):
             step = process_instruction(i, stack)
-            if "IF" not in i.prim:
-                globals()["STEPS"].append(step)
+            if "IF" not in i["prim"]:
+                STEPS.append(step)
     return None
 
 
 def applyIF_CONS(instruction, parameters, stack: List[Data]) -> None:
+    global STEPS
     if len(parameters[0].value[0]) > 0:
         d = parameters[0].value[0].pop(0)
         stack.append(parameters[0])
@@ -677,21 +681,23 @@ def applyIF_CONS(instruction, parameters, stack: List[Data]) -> None:
     for i in flatten(instruction["args"][branch]):
         step = process_instruction(i, stack)
         if "IF" not in i.prim:
-            globals()["STEPS"].append(step)
+            STEPS.append(step)
     return None
 
 
 def applyIF_LEFT(instruction, parameters, stack: List[Data]) -> None:
+    global STEPS
     stack.append(parameters[0].value[0])
     branch = 0 if parameters[0].orValue == "Left" else 1
     for i in flatten(instruction["args"][branch]):
         step = process_instruction(i, stack)
         if "IF" not in i.prim:
-            globals()["STEPS"].append(step)
+            STEPS.append(step)
     return None
 
 
 def applyIF_NONE(instruction, parameters, stack: List[Data]) -> None:
+    global STEPS
     if parameters[0].optionValue == "None":
         branch = 0
     else:
@@ -700,7 +706,7 @@ def applyIF_NONE(instruction, parameters, stack: List[Data]) -> None:
     for i in flatten(instruction["args"][branch]):
         step = process_instruction(i, stack)
         if "IF" not in i.prim:
-            globals()["STEPS"].append(step)
+            STEPS.append(step)
     return None
 
 
@@ -752,6 +758,7 @@ def applyLEFT(instruction, parameters, stack: List[Data]) -> Data:
 
 
 def applyLOOP(instruction, parameters, stack: List[Data]) -> None:
+    global STEPS
     top = stack.pop()
     v = False
     if top.prim != "bool":
@@ -764,7 +771,7 @@ def applyLOOP(instruction, parameters, stack: List[Data]) -> None:
         for i in flatten(instruction["args"]):
             step = process_instruction(i, stack)
             if "IF" not in i.prim:
-                globals()["STEPS"].append(step)
+                STEPS.append(step)
         top = stack.pop()
         if top.prim != "bool":
             raise CustomException(
@@ -776,6 +783,7 @@ def applyLOOP(instruction, parameters, stack: List[Data]) -> None:
 
 
 def applyLOOP_LEFT(instruction, parameters, stack: List[Data]) -> None:
+    global STEPS
     top = stack.pop()
     v = False
     if top.prim == "or":
@@ -791,7 +799,7 @@ def applyLOOP_LEFT(instruction, parameters, stack: List[Data]) -> None:
         for i in flatten(instruction["args"]):
             step = process_instruction(i, stack)
             if "IF" not in i.prim:
-                globals()["STEPS"].append(step)
+                STEPS.append(step)
         top = stack.pop()
         v = False
         if top.prim != "or":
@@ -827,13 +835,14 @@ def applyLT(instruction, parameters, stack: List[Data]) -> Data:
 
 
 def applyMAP(instruction, parameters, stack: List[Data]):
+    global STEPS
     new_list = []
     for _ in range(len(parameters[0].value[0])):
         stack.append(parameters[0].value[0].pop(0))
         for j in instruction["args"][::-1]:
             step = process_instruction(j, stack)
             if "IF" not in j.prim:
-                globals()["STEPS"].append(step)
+                STEPS.append(step)
         new_list.append(stack.pop())
     parameters[0].value[0] = new_list
     return parameters[0]
@@ -989,10 +998,10 @@ def applyPUSH(instruction, parameters, stack: List[Data]) -> Data:
             output.value.append(v2)
         case _:
             value = (
-                instruction["args"][1]["int"]
-                or instruction["args"][1]["string"]
-                or instruction["args"][1]["bytes"]
-                or instruction["args"][1]["prim"]
+                instruction["args"][1].get("int", None)
+                or instruction["args"][1].get("string", None)
+                or instruction["args"][1].get("bytes", None)
+                or instruction["args"][1].get("prim", None)
             )
             output.value.append(value)
     return output
@@ -1007,14 +1016,16 @@ def applyRIGHT(instruction, parameters, stack: List[Data]) -> Data:
 
 def applySELF(instruction, parameters, stack: List[Data]) -> Data:
     # Not implemented completely
-    output = Data("contract", [Data("address", [globals()["currentState"].address])])
+    global CURRENT_STATE
+    output = Data("contract", [Data("address", [CURRENT_STATE.address])])
     setattr(output, "contractType", "Unit")
     return output
 
 
 def applySENDER(instruction, parameters, stack: List[Data]) -> Data:
     # Not implemented completely/correctly
-    return Data("address", [globals()["currentState"].address])
+    global CURRENT_STATE
+    return Data("address", [CURRENT_STATE.address])
 
 
 def applySET_DELEGATE(instruction, parameters, stack: List[Data]) -> Data:
@@ -1067,7 +1078,8 @@ def applySOME(instruction, parameters, stack: List[Data]) -> Data:
 
 def applySOURCE(instruction, parameters, stack: List[Data]) -> Data:
     # Not implemented completely
-    return Data("address", [globals()["currentState"].address])
+    global CURRENT_STATE
+    return Data("address", [CURRENT_STATE.address])
 
 
 def applySUB(instruction, parameters, stack: List[Data]) -> Data:
