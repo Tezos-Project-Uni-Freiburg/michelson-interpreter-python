@@ -5,17 +5,30 @@ import json
 import re
 import subprocess
 import sys
-from typing import List
 
 import click
 
-from _types import Data, Delta, State, Step
+from _types import CustomException, Data, Delta, State, Step
 from _functions import flatten, initialize, process_instruction
 from _variables import CURRENT_STATE, STACK, STATES, STEPS
 
 
-def excepthook(type, value, traceback):
-    ...
+def excepthook(type: Exception, value: CustomException, traceback):
+    global CURRENT_STATE, STACK, STEPS
+    print("Got exception, details below:")
+    print(value)
+    print("-------------------------------")
+    print("Content of the exception:")
+    print(value.extra_params)
+    print("-------------------------------")
+    print("State at the time of exception:")
+    print(CURRENT_STATE)
+    print("-------------------------------")
+    print("Stack at the time of exception:")
+    print(STACK)
+    print("-------------------------------")
+    print("Recorded steps at the time of exception:")
+    print(STEPS)
 
 
 sys.excepthook = excepthook
