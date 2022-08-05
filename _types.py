@@ -1,11 +1,13 @@
 #!/usr/bin/python3
 import copy
 from dataclasses import dataclass, field
-from typing import List
 
 
 class CustomException(Exception):
-    def __init__(self, message: str, extra_params: List) -> None:
+    message: str
+    extra_params: list
+
+    def __init__(self, message: str, extra_params: list) -> None:
         super().__init__(message)
         self.extra_params = extra_params
 

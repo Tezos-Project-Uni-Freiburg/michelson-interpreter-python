@@ -8,47 +8,95 @@ import sys
 
 import click
 
-from _types import CustomException, Data, Delta, State, Step
+from _types import CustomException, Delta, State, Step
 from _functions import flatten, initialize, process_instruction
 from _variables import CURRENT_STATE, STACK, STATES, STEPS
 
 
 def excepthook(type: Exception, value: CustomException, traceback):
     global CURRENT_STATE, STACK, STEPS
-    print("Got exception, details below:")
-    print(value)
-    print("-------------------------------")
-    print("Content of the exception:")
-    print(value.extra_params)
-    print("-------------------------------")
-    print("State at the time of exception:")
-    print(CURRENT_STATE)
-    print("-------------------------------")
-    print("Stack at the time of exception:")
-    print(STACK)
-    print("-------------------------------")
-    print("Recorded steps at the time of exception:")
-    print(STEPS)
+    print(
+        f"""Got exception, details below:
+{value}
+-------------------------------
+Content of the exception:
+{value.extra_params}
+-------------------------------
+State at the time of exception:
+{CURRENT_STATE}
+-------------------------------
+Stack at the time of exception:
+{STACK}
+-------------------------------
+Recorded steps at the time of exception:
+{STEPS}
+"""
+    )
 
 
 sys.excepthook = excepthook
 
 
+@click.command()
+@click.option(
+    "-p", "--parameter", help="Parameter value for the script", required=True, type=str
+)
+@click.option(
+    "-s", "--storage", help="Storage value for the script", required=True, type=str
+)
+@click.option(
+    "--account", default="", show_default=True, help="Account as a string", type=str
+)
+@click.option(
+    "--address", default="", show_default=True, help="Address as a string", type=str
+)
+@click.option(
+    "--amount", default=0, show_default=True, help="Amount as an int", type=int
+)
+@click.option(
+    "--entrypoint",
+    default="default",
+    show_default=True,
+    help="Entrypoint as a string",
+    type=str,
+)
+@click.option(
+    "--gas_limit", default=0, show_default=True, help="Gas limit as an int", type=int
+)
+@click.option(
+    "--id", "_id", default=0, show_default=True, help="id as an int", type=int
+)
+@click.option(
+    "--timestamp",
+    default=0,
+    show_default=True,
+    help="Timestamp, an int as an Unix time",
+    type=int,
+)
+@click.argument("script", type=click.Path(exists=True, dir_okay=False, readable=True))
 def michelson_interpreter(
-    script: io.TextIOWrapper, parameter: str, storage: str, state: State
+    parameter: str,
+    storage: str,
+    account: str,
+    address: str,
+    amount: int,
+    entrypoint: str,
+    gas_limit: int,
+    _id: int,
+    timestamp,
+    script: click.Path,
 ):
-    global CURRENT_STATE
-    global STACK
-    global STATES
-    global STEPS
-
-    CURRENT_STATE = state
-    s = subprocess.run(
-        ["./ext/michelson-parser-wrapper/bin/michelson-parser.js"],
-        capture_output=True,
-        encoding="utf-8",
-        stdin=script,
+    global CURRENT_STATE, STACK, STATES, STEPS
+    CURRENT_STATE = State(
+        account, address, amount, entrypoint, gas_limit, _id, timestamp
     )
+    with open(str(script), encoding="utf-8") as f:
+        s = subprocess.run(
+            ["./ext/michelson-parser-wrapper/bin/michelson-parser.js"],
+            capture_output=True,
+            encoding="utf-8",
+            stdin=f,
+        )
     s = json.loads(re.sub(r"\\\\\"", '\\"', s.stdout).strip()[1:-1])
     if len(s) > 1:
         raise Exception("Multiple parsings!")
@@ -75,5 +123,4 @@ def michelson_interpreter(
 
 
 if __name__ == "__main__":
-    with open(sys.argv[1], encoding="utf-8") as f:
-        michelson_interpreter(f, sys.argv[2], sys.argv[3], State())
+    michelson_interpreter()
