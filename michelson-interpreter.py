@@ -1,35 +1,36 @@
 #!/usr/bin/python3
 import copy
-import io
+from collections import deque
+import dataclasses
 import json
 import re
 import subprocess
 import sys
-
+from typing import Deque
 import click
 
-from _types import CustomException, Delta, State, Step
+from _types import CustomException, Data, Delta, State, Step
 from _functions import flatten, initialize, process_instruction
-from _variables import CURRENT_STATE, STACK, STATES, STEPS
+import _variables
 
 
-def excepthook(type: Exception, value: CustomException, traceback):
-    global CURRENT_STATE, STACK, STEPS
+def excepthook(type, value, traceback):
+    # raise value
     print(
         f"""Got exception, details below:
 {value}
 -------------------------------
 Content of the exception:
-{value.extra_params}
+{json.dumps(value.extra_params)}
 -------------------------------
 State at the time of exception:
-{CURRENT_STATE}
+{json.dumps(dataclasses.asdict(_variables.CURRENT_STATE))}
 -------------------------------
 Stack at the time of exception:
-{STACK}
+{json.dumps([dataclasses.asdict(x) for x in _variables.STACK])}
 -------------------------------
 Recorded steps at the time of exception:
-{STEPS}
+{json.dumps([dataclasses.asdict(x) for x in _variables.STEPS])}
 """
     )
 
@@ -86,8 +87,7 @@ def michelson_interpreter(
     timestamp,
     script: click.Path,
 ):
-    global CURRENT_STATE, STACK, STATES, STEPS
-    CURRENT_STATE = State(
+    _variables.CURRENT_STATE = State(
         account, address, amount, entrypoint, gas_limit, _id, timestamp
     )
     with open(str(script), encoding="utf-8") as f:
@@ -106,20 +106,26 @@ def michelson_interpreter(
         s[1],
         flatten(flatten(s[2]["args"])),
     )
-    STACK.append(
+    _variables.STACK.append(
         initialize(
             parameter_type["args"][0], parameter, storage_type["args"][0], storage
         )
     )
-    STATES.append(copy.deepcopy(CURRENT_STATE))
-    STEPS.append(Step(Delta([], [STACK[0]]), [parameter_type, storage_type], STACK))
+    _variables.STATES.append(copy.deepcopy(_variables.CURRENT_STATE))
+    _variables.STEPS.append(
+        Step(
+            Delta([], [_variables.STACK[0]]),
+            [parameter_type, storage_type],
+            list(copy.deepcopy(_variables.STACK)),
+        )
+    )
 
     for i in code:
-        step = process_instruction(i, STACK)
+        step = process_instruction(i, _variables.STACK)
         if step is not None and "IF" not in i["prim"]:
-            STEPS.append(step)
+            _variables.STEPS.append(step)
 
-    print(STEPS)
+    print(json.dumps([dataclasses.asdict(x) for x in _variables.STEPS]))
 
 
 if __name__ == "__main__":

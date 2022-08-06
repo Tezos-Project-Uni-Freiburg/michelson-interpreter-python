@@ -1,6 +1,8 @@
 #!/usr/bin/python3
 import ast
+from collections import deque
 from copy import deepcopy
+import copy
 from datetime import datetime
 from functools import reduce
 from hashlib import blake2b, sha256, sha512
@@ -8,12 +10,12 @@ import json
 from math import trunc
 import re
 from time import time
-from typing import Any, Dict, List
+from typing import Any, Deque, Dict, List
 
 from base58 import b58encode_check
 
-from _variables import CURRENT_STATE, STEPS
-from _types import CustomException, Data, Delta, State, Step
+from _types import CustomException, Data, Delta, Step
+import _variables
 
 
 def initialize(
@@ -29,9 +31,10 @@ def initialize(
 
 
 def get_instruction_parameters(
-    requirements: Dict[str, Any], stack: List[Data]
-) -> List[Any]:
+    requirements: Dict[str, Any], stack: Deque[Data]
+) -> Deque[Data] | Deque[None]:
     flag = False
+    req_elems: Deque[Data] = deque()
     if requirements["multiple"]:
         req_size = len(
             reduce(
@@ -39,38 +42,44 @@ def get_instruction_parameters(
             )
         )
         if req_size > len(stack):
-            raise CustomException("not enough elements in the stack", [requirements])
-        req_elems = stack[-req_size:][::-1]
+            raise CustomException(
+                "not enough elements in the stack", {"requirements": requirements}
+            )
+        req_elems.extend(popmultiple(stack, req_size)[::-1])
         for i in range(len(requirements["l"])):
+            temp = list(req_elems)[: len(requirements["l"][i])]
             if all(
                 y == requirements["l"][i][x] or y is not None
-                for x, y in enumerate(
-                    map(lambda x: x.prim, req_elems[: len(requirements["l"][i])])
-                )
+                for x, y in enumerate(map(lambda x: x.prim, temp))
             ):
                 flag = True
-                return req_elems[: len(requirements["l"][i])]
+                return deque(temp)
         if not flag:
             raise CustomException(
-                "stack elements and opcode req does not match", [requirements]
+                "stack elements and opcode req does not match",
+                {"requirements": requirements},
             )
     elif requirements["l"][0] is None:
-        return [None]
+        return deque([None])
     else:
         req_size = len(requirements["l"])
         if req_size > len(stack):
-            raise CustomException("not enough elements in the stack", [requirements])
-        req_elems = stack[-req_size:][::-1]
+            raise CustomException(
+                "not enough elements in the stack", {"requirements": requirements}
+            )
+        req_elems: Deque[Data] = deque()
+        req_elems.extend(popmultiple(stack, req_size)[::-1])
         if all(x == "SAME" for x in requirements["l"]):
             if len({x.prim for x in req_elems}) != 1:
                 raise CustomException(
-                    "top elements are not of same type", [requirements]
+                    "top elements are not of same type", {"requirements": requirements}
                 )
         elif all(len(x) > 0 for x in requirements["l"]) and not all(
             y == req_elems[x].prim for x, y in enumerate(requirements["l"])
         ):
             raise CustomException(
-                "stack elements and opcode req does not match", [requirements]
+                "stack elements and opcode req does not match",
+                {"requirements": requirements},
             )
     return req_elems
 
@@ -267,22 +276,24 @@ def get_instruction_requirements(instruction: str) -> Dict[str, bool | List[List
                 ]
             )
         case _:
-            raise CustomException("unknown instruction type " + instruction, [])
+            raise CustomException("unknown instruction type " + instruction, {})
     return requirements
 
 
-def process_instruction(instruction: Dict[Any, Any], stack: List[Data]) -> Step:
-    global STEPS
+def process_instruction(instruction: Dict[str, Any], stack: Deque[Data]) -> Step:
     if "IF" in instruction["prim"]:
-        STEPS.append(Step(Delta([], []), [instruction], stack))
+        _variables.STEPS.append(
+            Step(Delta([], []), [instruction], list(copy.deepcopy(stack)))
+        )
     removed: List[Data] = []
     added: List[Data] = []
     parameters = get_instruction_parameters(
         get_instruction_requirements(instruction["prim"]), stack
     )
-    if len(parameters) != 1 or parameters[0] is not None:
-        removed.extend(stack[-len(parameters) :][::-1])
-        assert removed == parameters
+    # if len(parameters) != 1 or parameters[0] is not None:
+    #     for _ in range(len(parameters)):
+    #         removed.insert(0, stack.pop())
+    #     assert removed == parameters
 
     result = globals()["apply" + instruction["prim"]](instruction, parameters, stack)
     if result is not None:
@@ -299,45 +310,57 @@ def process_instruction(instruction: Dict[Any, Any], stack: List[Data]) -> Step:
                     del i["args"]
                 stack.append(i)
                 added.append(i)
-    return Step(Delta(removed, added), [instruction], stack)
+    return Step(Delta(removed, added), [instruction], list(copy.deepcopy(stack)))
 
 
 # instruction functions
 
 
-def applyABS(instruction, parameters, stack: List[Data]) -> Data:
+def applyABS(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     return Data("nat", [str(abs(int(parameters[0].value[0])))])
 
 
-def applyADD(instruction, parameters, stack: List[Data]) -> Data:
+def applyADD(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     output = Data("", [str(int(parameters[0].value[0]) + int(parameters[1].value[0]))])
-    match parameters[0]["prim"]:
+    match parameters[0].prim:
         case "nat":
-            output.prim = "nat" if parameters[1]["prim"] == "nat" else "int"
+            output.prim = "nat" if parameters[1].prim == "nat" else "int"
         case "int":
-            output.prim = "timestamp" if parameters[1]["prim"] == "timestamp" else "int"
+            output.prim = "timestamp" if parameters[1].prim == "timestamp" else "int"
         case "timestamp":
             output.prim = "timestamp"
         case "mutez":
             output.prim = "mutez"
         case _:
             raise CustomException(
-                "unexpected prim in applyADD", [instruction, parameters, stack]
+                "unexpected prim in applyADD",
+                {"instruction": instruction, "parameters": parameters},
             )
     return output
 
 
-def applyADDRESS(instruction, parameters, stack: List[Data]):
+def applyADDRESS(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+):
     return parameters[0].value[0]
 
 
-def applyAMOUNT(instruction, parameters, stack: List[Data]) -> Data:
-    global CURRENT_STATE
-    return Data("mutez", [str(CURRENT_STATE.amount)])
+def applyAMOUNT(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> Data:
+    return Data("mutez", [str(_variables.CURRENT_STATE.amount)])
 
 
-def applyAND(instruction, parameters, stack: List[Data]) -> Data:
-    match parameters[0]["prim"]:
+def applyAND(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
+    match parameters[0].prim:
         case "bool":
             return Data(
                 "bool",
@@ -353,46 +376,69 @@ def applyAND(instruction, parameters, stack: List[Data]) -> Data:
                 "nat", [str(int(parameters[0].value[0]) & int(parameters[1].value[0]))]
             )
         case _:
-            raise CustomException("prim error in AND", [instruction, parameters])
+            raise CustomException(
+                "prim error in AND",
+                {"instruction": instruction, "parameters": parameters},
+            )
 
 
-def applyAPPLY(instruction, parameters, stack: List[Data]) -> Data:
+def applyAPPLY(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> Data:
     # Not implemented
     return Data("lambda", [])
 
 
-def applyBALANCE(instruction, parameters, stack: List[Data]) -> Data:
-    global CURRENT_STATE
-    return Data("mutez", [str(CURRENT_STATE.amount)])
+def applyBALANCE(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> Data:
+    return Data("mutez", [str(_variables.CURRENT_STATE.amount)])
 
 
-def applyBLAKE2B(instruction, parameters, stack: List[Data]) -> Data:
+def applyBLAKE2B(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     return Data("bytes", [blake2b(bytes(parameters[0].value[0], "utf-8")).hexdigest()])
 
 
-def applyCAR(instruction, parameters, stack: List[Data]):
+def applyCAR(instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]):
     return parameters[0].value[0]
 
 
-def applyCDR(instruction, parameters, stack: List[Data]):
+def applyCDR(instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]):
     return parameters[0].value[0]
 
 
-def applyCHAIN_ID(instruction, parameters, stack: List[Data]):
+def applyCHAIN_ID(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+):
     # Not implemented
     return Data("chain_id", [""])
 
 
-def applyCHECK_SIGNATURE(instruction, parameters, stack: List[Data]) -> Data:
+def applyCHECK_SIGNATURE(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> Data:
     # Not implemented
     return Data("bool", ["False"])
 
 
-def applyCOMPARE(instruction, parameters, stack: List[Data]) -> Data:
+def applyCOMPARE(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     # template
     if "C" not in parameters[0].attributes or "C" not in parameters[1].attributes:
         raise CustomException(
-            "can't compare non-Comparable types", [instruction, parameters]
+            "can't compare non-Comparable types",
+            {"instruction": instruction, "parameters": parameters},
         )
     output = Data("int", [])
     match parameters[0].prim:
@@ -422,35 +468,44 @@ def applyCOMPARE(instruction, parameters, stack: List[Data]) -> Data:
                 output.value.append("0")
         case _:
             raise CustomException(
-                "COMPARE not implemented for complex types", [instruction, parameters]
+                "COMPARE not implemented for complex types",
+                {"instruction": instruction, "parameters": parameters},
             )
     return output
 
 
-def applyCONCAT(instruction, parameters, stack: List[Data]) -> Data:
+def applyCONCAT(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     value = ""
-    if parameters[0]["prim"] != "list":
+    if parameters[0].prim != "list":
         value = parameters[0].value[0] + parameters[1].value[0]
-        return Data("string" if parameters[0]["prim"] == "string" else "bytes", [value])
+        return Data("string" if parameters[0].prim == "string" else "bytes", [value])
     else:
         for i in parameters[0].value[0]:
             value += i.value[0]
         return Data(
-            "string" if parameters[0].listType["prim"] == "string" else "bytes", [value]
+            "string"
+            if getattr(parameters[0], "listType").prim == "string"
+            else "bytes",
+            [value],
         )
 
 
-def applyCONS(instruction, parameters, stack: List[Data]):
-    if parameters[0]["prim"] != parameters[1].listType["prim"]:
+def applyCONS(instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]):
+    if parameters[0].prim != getattr(parameters[1], "listType").prim:
         raise CustomException(
-            "list type and element type are not same", [instruction, parameters]
+            "list type and element type are not same",
+            {"instruction": instruction, "parameters": parameters},
         )
     else:
         parameters[1].value[0].insert(0, parameters[0])
         return parameters[1]
 
 
-def applyCONTRACT(instruction, parameters, stack: List[Data]) -> Data:
+def applyCONTRACT(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     # Not implemented completely
     c = Data("contract", [parameters[0]])
     setattr(c, "contractType", instruction["args"][0])
@@ -460,48 +515,60 @@ def applyCONTRACT(instruction, parameters, stack: List[Data]) -> Data:
     return output
 
 
-def applyCREATE_CONTRACT(instruction, parameters, stack: List[Data]) -> List[Data]:
+def applyCREATE_CONTRACT(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> List[Data]:
     # Not implemented
     return [Data("operation", []), Data("address", [])]
 
 
-def applyDIG(instruction, parameters, stack: List[Data]) -> None:
+def applyDIG(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> None:
     if instruction["args"][0].int != 0:
         if instruction["args"][0].int > len(stack) - 1:
             raise CustomException(
-                "not enough elements in the stack", [instruction, parameters]
+                "not enough elements in the stack",
+                {"instruction": instruction, "parameters": parameters},
             )
-        arrayMoveMutable(
-            stack, len(stack) - 1 - instruction["args"][0].int, len(stack) - 1
-        )
+        dequemove(stack, len(stack) - 1 - instruction["args"][0].int, len(stack) - 1)
     return None
 
 
-def applyDIP(instruction, parameters, stack: List[Data]) -> None:
-    global STEPS
+def applyDIP(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> None:
     n = 1
     if hasattr(instruction["args"][0], "int"):
         n = int(instruction["args"][0].int)
         instruction["args"].pop(0)
     if n + 1 > len(stack):
-        raise CustomException("not enough elements in stack", [instruction, parameters])
+        raise CustomException(
+            "not enough elements in stack",
+            {"instruction": instruction, "parameters": parameters},
+        )
     p: List[Data] = []
     for i in range(n):
         p.insert(0, stack.pop())
     for i in flatten(instruction["args"]):
         step = process_instruction(i, stack)
-        if "IF" not in i.prim:
-            STEPS.append(step)
+        if "IF" not in i["prim"]:
+            _variables.STEPS.append(step)
     for i in p:
         stack.append(i)
     return None
 
 
-def applyDROP(instruction, parameters, stack: List[Data]) -> None:
+def applyDROP(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> None:
     n = int(instruction["args"][0].int) if hasattr(instruction, "args") else 1
     if n > len(stack):
         raise CustomException(
-            "not enough elements in the stack", [instruction, parameters]
+            "not enough elements in the stack",
+            {"instruction": instruction, "parameters": parameters},
         )
     if n != 0:
         for _ in range(n):
@@ -509,34 +576,42 @@ def applyDROP(instruction, parameters, stack: List[Data]) -> None:
     return None
 
 
-def applyDUG(instruction, parameters, stack: List[Data]) -> None:
+def applyDUG(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> None:
     n = int(instruction["args"][0].int)
     if n == 0:
         return None
     if n >= len(stack):
         raise CustomException(
-            "not enough elements in the stack", [instruction, parameters]
+            "not enough elements in the stack",
+            {"instruction": instruction, "parameters": parameters},
         )
     stack.insert(len(stack) - 1 - n, stack[len(stack) - 1])
     stack.pop()
     return None
 
 
-def applyDUP(instruction, parameters, stack: List[Data]) -> Data:
+def applyDUP(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     n = int(instruction["args"][0].int) if hasattr(instruction, "args") else 1
     if n == 0:
         raise CustomException(
             "non-allowed value for " + instruction["prim"] + ": " + instruction["args"],
-            [instruction, parameters],
+            {"instruction": instruction, "parameters": parameters},
         )
     if n > len(stack):
         raise CustomException(
-            "not enough elements in the stack", [instruction, parameters]
+            "not enough elements in the stack",
+            {"instruction": instruction, "parameters": parameters},
         )
     return deepcopy(stack[len(stack) - n])
 
 
-def applyEDIV(instruction, parameters, stack: List[Data]) -> Data:
+def applyEDIV(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     output = Data("option", [])
     setattr(output, "optionType", ["pair"])
     z1 = int(parameters[0].value[0])
@@ -553,9 +628,9 @@ def applyEDIV(instruction, parameters, stack: List[Data]) -> Data:
     t1 = ""
     t2 = ""
 
-    match parameters[0]["prim"]:
+    match parameters[0].prim:
         case "nat":
-            if parameters[1]["prim"] == "nat":
+            if parameters[1].prim == "nat":
                 t1 = "nat"
                 t2 = "nat"
             else:
@@ -565,7 +640,7 @@ def applyEDIV(instruction, parameters, stack: List[Data]) -> Data:
             t1 = "int"
             t2 = "nat"
         case "mutez":
-            if parameters[1]["prim"] == "nat":
+            if parameters[1].prim == "nat":
                 t1 = "mutez"
             else:
                 t1 = "nat"
@@ -574,12 +649,18 @@ def applyEDIV(instruction, parameters, stack: List[Data]) -> Data:
     return output
 
 
-def applyEMPTY_BIG_MAP(instruction, parameters, stack: List[Data]) -> Data:
+def applyEMPTY_BIG_MAP(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     if "C" not in Data(instruction["args"][0]["prim"]).attributes:
-        raise CustomException("kty is not comparable", [instruction, parameters])
+        raise CustomException(
+            "kty is not comparable",
+            {"instruction": instruction, "parameters": parameters},
+        )
     elif {instruction["args"][1]["prim"]}.issubset({"operation", "big_map"}):
         raise CustomException(
-            "vty is " + instruction["args"][1]["prim"], [instruction, parameters]
+            "vty is " + instruction["args"][1]["prim"],
+            {"instruction": instruction, "parameters": parameters},
         )
     output = Data("big_map", [dict()])
     setattr(output, "keyType", instruction["args"][0])
@@ -587,21 +668,33 @@ def applyEMPTY_BIG_MAP(instruction, parameters, stack: List[Data]) -> Data:
     return output
 
 
-def applyEMPTY_MAP(instruction, parameters, stack: List[Data]) -> Data:
+def applyEMPTY_MAP(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     if "C" not in Data(instruction["args"][0]["prim"]).attributes:
-        raise CustomException("kty is not comparable", [instruction, parameters])
+        raise CustomException(
+            "kty is not comparable",
+            {"instruction": instruction, "parameters": parameters},
+        )
     return Data("map", [instruction["args"][0]["prim"], instruction["args"][1]["prim"]])
 
 
-def applyEMPTY_SET(instruction, parameters, stack: List[Data]) -> Data:
+def applyEMPTY_SET(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     if "C" not in Data(instruction["args"][0]["prim"]).attributes:
-        raise CustomException("kty is not comparable", [instruction, parameters])
+        raise CustomException(
+            "kty is not comparable",
+            {"instruction": instruction, "parameters": parameters},
+        )
     output = Data("set", [set()])
     setattr(output, "setType", instruction["args"][0])
     return output
 
 
-def applyEQ(instruction, parameters, stack: List[Data]) -> Data:
+def applyEQ(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     result = Data("bool", [])
     if int(parameters[0].value[0]) == 0:
         result.value.append("True")
@@ -610,31 +703,42 @@ def applyEQ(instruction, parameters, stack: List[Data]) -> Data:
     return result
 
 
-def applyEXEC(instruction, parameters, stack: List[Data]) -> Data:
+def applyEXEC(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> Data:
     # Not implemented
     return Data("unit", [])
 
 
-def applyFAILWITH(instruction, parameters, stack: List[Data]) -> None:
+def applyFAILWITH(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> None:
     if "PA" not in stack[len(stack) - 1].attributes:
         raise CustomException(
-            "FAILWITH got non-packable top element", [instruction, parameters]
+            "FAILWITH got non-packable top element",
+            {"instruction": instruction, "parameters": parameters},
         )
     else:
         raise CustomException(
             "got FAILWITH, top element of the stack: "
             + str(stack[len(stack) - 1].value),
-            [instruction, parameters],
+            {"instruction": instruction, "parameters": parameters},
         )
 
 
-def applyGE(instruction, parameters, stack: List[Data]) -> Data:
+def applyGE(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     return Data("bool", ["True" if int(parameters[0].value[0]) >= 0 else "False"])
 
 
-def applyGET(instruction, parameters, stack: List[Data]) -> Data:
+def applyGET(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     output = Data("option", [])
-    setattr(output, "optionType", [parameters[1].keyType["prim"]])
+    setattr(output, "optionType", [getattr(parameters[1], "keyType").prim])
     if parameters[0].value[0] in parameters[1].value[0]:
         setattr(output, "optionValue", "Some")
         output.value.append(parameters[1].value[0].get(parameters[0].value[0]))
@@ -643,34 +747,40 @@ def applyGET(instruction, parameters, stack: List[Data]) -> Data:
     return output
 
 
-def applyGT(instruction, parameters, stack: List[Data]) -> Data:
+def applyGT(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     return Data("bool", ["True" if int(parameters[0].value[0]) > 0 else "False"])
 
 
-def applyHASH_KEY(instruction, parameters, stack: List[Data]) -> Data:
+def applyHASH_KEY(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     return Data(
         "key_hash",
         [b58encode_check(bytes.fromhex(parameters[0].value[0])).decode("utf-8")],
     )
 
 
-def applyIF(instruction, parameters, stack: List[Data]) -> None:
-    global STEPS
+def applyIF(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> None:
     if parameters[0].value[0].lower() == "true":
         for i in flatten(instruction["args"][0]):
             step = process_instruction(i, stack)
             if "IF" not in i["prim"]:
-                STEPS.append(step)
+                _variables.STEPS.append(step)
     else:
         for i in flatten(instruction["args"][1]):
             step = process_instruction(i, stack)
             if "IF" not in i["prim"]:
-                STEPS.append(step)
+                _variables.STEPS.append(step)
     return None
 
 
-def applyIF_CONS(instruction, parameters, stack: List[Data]) -> None:
-    global STEPS
+def applyIF_CONS(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> None:
     if len(parameters[0].value[0]) > 0:
         d = parameters[0].value[0].pop(0)
         stack.append(parameters[0])
@@ -681,24 +791,26 @@ def applyIF_CONS(instruction, parameters, stack: List[Data]) -> None:
     for i in flatten(instruction["args"][branch]):
         step = process_instruction(i, stack)
         if "IF" not in i.prim:
-            STEPS.append(step)
+            _variables.STEPS.append(step)
     return None
 
 
-def applyIF_LEFT(instruction, parameters, stack: List[Data]) -> None:
-    global STEPS
+def applyIF_LEFT(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> None:
     stack.append(parameters[0].value[0])
-    branch = 0 if parameters[0].orValue == "Left" else 1
+    branch = 0 if getattr(parameters[0], "orValue") == "Left" else 1
     for i in flatten(instruction["args"][branch]):
         step = process_instruction(i, stack)
         if "IF" not in i.prim:
-            STEPS.append(step)
+            _variables.STEPS.append(step)
     return None
 
 
-def applyIF_NONE(instruction, parameters, stack: List[Data]) -> None:
-    global STEPS
-    if parameters[0].optionValue == "None":
+def applyIF_NONE(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> None:
+    if getattr(parameters[0], "optionValue") == "None":
         branch = 0
     else:
         branch = 1
@@ -706,21 +818,27 @@ def applyIF_NONE(instruction, parameters, stack: List[Data]) -> None:
     for i in flatten(instruction["args"][branch]):
         step = process_instruction(i, stack)
         if "IF" not in i.prim:
-            STEPS.append(step)
+            _variables.STEPS.append(step)
     return None
 
 
-def applyIMPLICIT_ACCOUNT(instruction, parameters, stack: List[Data]) -> Data:
+def applyIMPLICIT_ACCOUNT(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     output = Data("contract", [parameters[0]])
     setattr(output, "contractType", Data("unit", ["Unit"]))
     return output
 
 
-def applyINT(instruction, parameters, stack: List[Data]) -> Data:
+def applyINT(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     return Data("int", [parameters[0].value[0]])
 
 
-def applyISNAT(instruction, parameters, stack: List[Data]) -> Data:
+def applyISNAT(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     output = Data("option", [])
     setattr(output, "optionType", ["nat"])
     if int(parameters[0].value[0]) < 0:
@@ -731,17 +849,27 @@ def applyISNAT(instruction, parameters, stack: List[Data]) -> Data:
     return output
 
 
-def applyITER(instruction, parameters, stack: List[Data]) -> None:
+def applyITER(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> None:
     # Not implemented
     return None
 
 
-def applyLAMBDA(instruction, parameters, stack: List[Data]) -> None:
+def applyLAMBDA(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> None:
     # Not implemented
     return None
 
 
-def applyLE(instruction, parameters, stack: List[Data]) -> Data:
+def applyLE(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     result = Data("bool", [])
     if int(parameters[0].value[0]) <= 0:
         result.value.append("True")
@@ -750,20 +878,24 @@ def applyLE(instruction, parameters, stack: List[Data]) -> Data:
     return result
 
 
-def applyLEFT(instruction, parameters, stack: List[Data]) -> Data:
+def applyLEFT(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     output = Data("or", [parameters[0]])
     setattr(output, "orValue", "Left")
-    setattr(output, "orType", [parameters[0]["prim"], instruction["args"][0]["prim"]])
+    setattr(output, "orType", [parameters[0].prim, instruction["args"][0]["prim"]])
     return output
 
 
-def applyLOOP(instruction, parameters, stack: List[Data]) -> None:
-    global STEPS
+def applyLOOP(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> None:
     top = stack.pop()
     v = False
     if top.prim != "bool":
         raise CustomException(
-            "top element of stack is not bool", [instruction, parameters]
+            "top element of stack is not bool",
+            {"instruction": instruction, "parameters": parameters},
         )
     else:
         v = top.value[0].lower() == "true"
@@ -771,24 +903,27 @@ def applyLOOP(instruction, parameters, stack: List[Data]) -> None:
         for i in flatten(instruction["args"]):
             step = process_instruction(i, stack)
             if "IF" not in i.prim:
-                STEPS.append(step)
+                _variables.STEPS.append(step)
         top = stack.pop()
         if top.prim != "bool":
             raise CustomException(
-                "top element of stack is not bool", [instruction, parameters]
+                "top element of stack is not bool",
+                {"instruction": instruction, "parameters": parameters},
             )
         else:
             v = top.value[0].lower() == "true"
     return None
 
 
-def applyLOOP_LEFT(instruction, parameters, stack: List[Data]) -> None:
-    global STEPS
+def applyLOOP_LEFT(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> None:
     top = stack.pop()
     v = False
     if top.prim == "or":
         raise CustomException(
-            "top element of stack is not or", [instruction, parameters]
+            "top element of stack is not or",
+            {"instruction": instruction, "parameters": parameters},
         )
     elif getattr(top, "orValue") == "Right":
         stack.append(top)
@@ -799,12 +934,13 @@ def applyLOOP_LEFT(instruction, parameters, stack: List[Data]) -> None:
         for i in flatten(instruction["args"]):
             step = process_instruction(i, stack)
             if "IF" not in i.prim:
-                STEPS.append(step)
+                _variables.STEPS.append(step)
         top = stack.pop()
         v = False
         if top.prim != "or":
             raise CustomException(
-                "top element of stack is not or", [instruction, parameters]
+                "top element of stack is not or",
+                {"instruction": instruction, "parameters": parameters},
             )
         elif getattr(top, "orValue") == "Right":
             stack.append(top)
@@ -814,47 +950,61 @@ def applyLOOP_LEFT(instruction, parameters, stack: List[Data]) -> None:
     return None
 
 
-def applyLSL(instruction, parameters, stack: List[Data]) -> Data:
+def applyLSL(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     f = int(parameters[0].value[0])
     s = int(parameters[1].value[0])
     if s > 256:
-        raise CustomException("s is larger than 256", [instruction, parameters])
+        raise CustomException(
+            "s is larger than 256",
+            {"instruction": instruction, "parameters": parameters},
+        )
     return Data("nat", [str(f << s)])
 
 
-def applyLSR(instruction, parameters, stack: List[Data]) -> Data:
+def applyLSR(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     f = int(parameters[0].value[0])
     s = int(parameters[1].value[0])
     if s > 256:
-        raise CustomException("s is larger than 256", [instruction, parameters])
+        raise CustomException(
+            "s is larger than 256",
+            {"instruction": instruction, "parameters": parameters},
+        )
     return Data("nat", [str(f >> s)])
 
 
-def applyLT(instruction, parameters, stack: List[Data]) -> Data:
+def applyLT(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     return Data("bool", ["True" if int(parameters[0].value[0]) < 0 else "False"])
 
 
-def applyMAP(instruction, parameters, stack: List[Data]):
-    global STEPS
+def applyMAP(instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]):
     new_list = []
     for _ in range(len(parameters[0].value[0])):
         stack.append(parameters[0].value[0].pop(0))
         for j in instruction["args"][::-1]:
             step = process_instruction(j, stack)
             if "IF" not in j.prim:
-                STEPS.append(step)
+                _variables.STEPS.append(step)
         new_list.append(stack.pop())
     parameters[0].value[0] = new_list
     return parameters[0]
 
 
-def applyMEM(instruction, parameters, stack: List[Data]) -> Data:
+def applyMEM(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     if (
-        parameters[1]["prim"] in ["big_map", "map"]
-        and parameters[1].keyType != parameters[0]["prim"]
-    ) or parameters[1].setType != parameters[0]["prim"]:
+        parameters[1].prim in ["big_map", "map"]
+        and getattr(parameters[1], "keyType") != parameters[0].prim
+    ) or getattr(parameters[1], "setType") != parameters[0].prim:
         raise CustomException(
-            "key or element type does not match", [instruction, parameters]
+            "key or element type does not match",
+            {"instruction": instruction, "parameters": parameters},
         )
     return Data(
         "bool",
@@ -862,14 +1012,16 @@ def applyMEM(instruction, parameters, stack: List[Data]) -> Data:
     )
 
 
-def applyMUL(instruction, parameters, stack: List[Data]) -> Data:
+def applyMUL(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     z1 = int(parameters[0].value[0])
     z2 = int(parameters[1].value[0])
     t = ""
 
-    match parameters[0]["prim"]:
+    match parameters[0].prim:
         case "nat":
-            t = parameters[1]["prim"]
+            t = parameters[1].prim
         case "int":
             t = "int"
         case "mutez":
@@ -877,26 +1029,38 @@ def applyMUL(instruction, parameters, stack: List[Data]) -> Data:
     return Data(t, [str(z1 * z2)])
 
 
-def applyNEG(instruction, parameters, stack: List[Data]) -> Data:
+def applyNEG(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     return Data("int", [str(-int(parameters[0].value[0]))])
 
 
-def applyNEQ(instruction, parameters, stack: List[Data]) -> Data:
+def applyNEQ(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     return Data("bool", ["True" if int(parameters[0].value[0]) != 0 else "False"])
 
 
-def applyNIL(instruction, parameters, stack: List[Data]) -> Data:
+def applyNIL(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     if not hasattr(instruction, "args"):
-        raise CustomException("type of list is not declared", [instruction, parameters])
+        raise CustomException(
+            "type of list is not declared",
+            {"instruction": instruction, "parameters": parameters},
+        )
     output = Data("list", [[]])
     setattr(output, "listType", instruction["args"][0])
     return output
 
 
-def applyNONE(instruction, parameters, stack: List[Data]) -> Data:
+def applyNONE(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     if not hasattr(instruction, "args"):
         raise CustomException(
-            "type of option is not declared", [instruction, parameters]
+            "type of option is not declared",
+            {"instruction": instruction, "parameters": parameters},
         )
     output = Data("option", [instruction["args"][0]["prim"]])
     setattr(output, "optionValue", "None")
@@ -904,22 +1068,32 @@ def applyNONE(instruction, parameters, stack: List[Data]) -> Data:
     return output
 
 
-def applyNOT(instruction, parameters, stack: List[Data]) -> Data:
-    match parameters[0]["prim"]:
+def applyNOT(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
+    match parameters[0].prim:
         case "int" | "nat":
             return Data("int", [str(~int(parameters[0].value[0]))])
         case "bool":
             return Data("bool", [str(parameters[0].value[0].lower() == "true")])
         case _:
-            raise CustomException("unknown prim", [instruction, parameters])
+            raise CustomException(
+                "unknown prim", {"instruction": instruction, "parameters": parameters}
+            )
 
 
-def applyNOW(instruction, parameters, stack: List[Data]) -> Data:
+def applyNOW(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> Data:
     return Data("timestamp", [str(int(time() * 1000))])
 
 
-def applyOR(instruction, parameters, stack: List[Data]) -> Data:
-    if parameters[0]["prim"] == "bool":
+def applyOR(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
+    if parameters[0].prim == "bool":
         return Data(
             "bool",
             [
@@ -935,22 +1109,34 @@ def applyOR(instruction, parameters, stack: List[Data]) -> Data:
         )
 
 
-def applyPACK(instruction, parameters, stack: List[Data]) -> Data:
+def applyPACK(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     # not implemented
     if "PA" not in parameters[0].attributes:
-        raise CustomException("can't PACK non-packable type", [instruction, parameters])
+        raise CustomException(
+            "can't PACK non-packable type",
+            {"instruction": instruction, "parameters": parameters},
+        )
     return Data("bytes", [bytes(json.dumps(parameters[0].value), "utf-8").hex()])
 
 
-def applyPAIR(instruction, parameters, stack: List[Data]) -> Data:
+def applyPAIR(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     if hasattr(instruction, "args"):
         raise CustomException(
-            "PAIR 'n' case hasn't been implemented", [instruction, parameters]
+            "PAIR 'n' case hasn't been implemented",
+            {"instruction": instruction, "parameters": parameters},
         )
     return Data("pair", [parameters[0], parameters[1]])
 
 
-def applyPUSH(instruction, parameters, stack: List[Data]) -> Data:
+def applyPUSH(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> Data:
     output = Data(instruction["args"][0]["prim"], [])
     match instruction["args"][0]["prim"]:
         case "list":
@@ -1007,68 +1193,92 @@ def applyPUSH(instruction, parameters, stack: List[Data]) -> Data:
     return output
 
 
-def applyRIGHT(instruction, parameters, stack: List[Data]) -> Data:
+def applyRIGHT(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     output = Data("or", [parameters[0]])
     setattr(output, "orValue", "Right")
-    setattr(output, "orType", [instruction["args"][0]["prim"], parameters[0]["prim"]])
+    setattr(output, "orType", [instruction["args"][0]["prim"], parameters[0].prim])
     return output
 
 
-def applySELF(instruction, parameters, stack: List[Data]) -> Data:
+def applySELF(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> Data:
     # Not implemented completely
-    global CURRENT_STATE
-    output = Data("contract", [Data("address", [CURRENT_STATE.address])])
+    output = Data("contract", [Data("address", [_variables.CURRENT_STATE.address])])
     setattr(output, "contractType", "Unit")
     return output
 
 
-def applySENDER(instruction, parameters, stack: List[Data]) -> Data:
+def applySENDER(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> Data:
     # Not implemented completely/correctly
-    global CURRENT_STATE
-    return Data("address", [CURRENT_STATE.address])
+    return Data("address", [_variables.CURRENT_STATE.address])
 
 
-def applySET_DELEGATE(instruction, parameters, stack: List[Data]) -> Data:
+def applySET_DELEGATE(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> Data:
     # Not implemented
     return Data("operation", [])
 
 
-def applySHA256(instruction, parameters, stack: List[Data]) -> Data:
+def applySHA256(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     return Data("bytes", [sha256(bytes(parameters[0].value[0])).hexdigest()])
 
 
-def applySHA512(instruction, parameters, stack: List[Data]) -> Data:
+def applySHA512(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     return Data("bytes", [sha512(bytes(parameters[0].value[0])).hexdigest()])
 
 
-def applySIZE(instruction, parameters, stack: List[Data]) -> Data:
+def applySIZE(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     return Data("nat", [str(len(parameters[0].value[0]))])
 
 
-def applySLICE(instruction, parameters, stack: List[Data]) -> Data:
+def applySLICE(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     offset = int(parameters[0].value[0])
     _len = int(parameters[1].value[0])
     _str = parameters[2].value[0]
     output = Data("option", [])
-    setattr(output, "optionType", [parameters[2]["prim"]])
+    setattr(output, "optionType", [parameters[2].prim])
     if len(_str) == 0 or offset >= len(_str) or offset + _len > len(_str):
         setattr(output, "optionValue", "None")
     elif offset < len(_str) and offset + _len <= len(_str):
         setattr(output, "optionValue", "Some")
         output.value.append(
-            Data(parameters[2]["prim"], [_str[slice(offset, offset + _len)]])
+            Data(parameters[2].prim, [_str[slice(offset, offset + _len)]])
         )
     return output
 
 
-def applySOME(instruction, parameters, stack: List[Data]) -> Data:
+def applySOME(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     if not hasattr(instruction, "args"):
         raise CustomException(
-            "type of option is not declared", [instruction, parameters]
+            "type of option is not declared",
+            {"instruction": instruction, "parameters": parameters},
         )
-    elif instruction["args"][0]["prim"] != parameters[0]["prim"]:
+    elif instruction["args"][0]["prim"] != parameters[0].prim:
         raise CustomException(
-            "stack value and option type doesn't match", [instruction, parameters]
+            "stack value and option type doesn't match",
+            {"instruction": instruction, "parameters": parameters},
         )
     output = Data("option", [parameters[0]])
     setattr(output, "optionValue", "Some")
@@ -1076,51 +1286,68 @@ def applySOME(instruction, parameters, stack: List[Data]) -> Data:
     return output
 
 
-def applySOURCE(instruction, parameters, stack: List[Data]) -> Data:
+def applySOURCE(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> Data:
     # Not implemented completely
-    global CURRENT_STATE
-    return Data("address", [CURRENT_STATE.address])
+    return Data("address", [_variables.CURRENT_STATE.address])
 
 
-def applySUB(instruction, parameters, stack: List[Data]) -> Data:
-    if "timestamp" in [parameters[0]["prim"], parameters[1]["prim"]] and (
+def applySUB(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
+    if "timestamp" in [parameters[0].prim, parameters[1].prim] and (
         re.match(r"[a-z]", parameters[0].value[0], flags=re.I)
         or re.match(r"[a-z]", parameters[1].value[0], flags=re.I)
     ):
         raise CustomException(
             "SUB not implemented for timestamps in RFC3339 notation",
-            [instruction, parameters],
+            {"instruction": instruction, "parameters": parameters},
         )
 
     z1 = int(parameters[0].value[0])
     z2 = int(parameters[1].value[0])
     t = ""
 
-    match parameters[0]["prim"]:
+    match parameters[0].prim:
         case "nat" | "int":
             t = "int"
         case "timestamp":
-            t = "timestamp" if parameters[1]["prim"] == "int" else "int"
+            t = "timestamp" if parameters[1].prim == "int" else "int"
         case "mutez":
             t = "mutez"
 
     return Data(t, [str(z1 - z2)])
 
 
-def applySWAP(instruction, parameters, stack: List[Data]) -> List:
-    return parameters[::-1]
+def applySWAP(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> List:
+    return list(parameters)[::-1]
 
 
-def applyTRANSFER_TOKENS(instruction, parameters, stack: List[Data]) -> Data:
+def applyTRANSFER_TOKENS(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> Data:
     # Not implemented
     return Data("operation", [])
 
 
-def applyUNIT(instruction, parameters, stack: List[Data]) -> Data:
+def applyUNIT(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> Data:
     return Data("unit", ["Unit"])
 
 
-def applyUNPACK(instruction, parameters, stack: List[Data]) -> Data:
+def applyUNPACK(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
     # Type check is not being done here
     v = ast.literal_eval(
         json.dumps(bytes.fromhex(parameters[0].value[0]).decode("utf-8"))
@@ -1142,21 +1369,32 @@ def applyUNPACK(instruction, parameters, stack: List[Data]) -> Data:
     return output
 
 
-def applyUPDATE(instruction, parameters, stack: List[Data]):
-    if parameters[1]["prim"] == "bool":
-        if parameters[0]["prim"] != parameters[2].setType:
-            raise CustomException("set type does not match", [instruction, parameters])
+def applyUPDATE(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+):
+    if parameters[1].prim == "bool":
+        if parameters[0].prim != getattr(parameters[2], "setType"):
+            raise CustomException(
+                "set type does not match",
+                {"instruction": instruction, "parameters": parameters},
+            )
         if parameters[1].value[0].lower() == "true":
             parameters[2].value[0].add(parameters[2].value)
         else:
             parameters[2].value[0].remove(parameters[2].value)
     else:
-        if parameters[0]["prim"] != parameters[2].keyType:
-            raise CustomException("key type does not match", [instruction, parameters])
-        if parameters[1].optionValue == "Some":
-            if parameters[1].optionType[0] != parameters[2].valueType:
+        if parameters[0].prim != getattr(parameters[2], "keyType"):
+            raise CustomException(
+                "key type does not match",
+                {"instruction": instruction, "parameters": parameters},
+            )
+        if getattr(parameters[1], "optionValue") == "Some":
+            if getattr(parameters[1], "optionType")[0] != getattr(
+                parameters[2], "valueType"
+            ):
                 raise CustomException(
-                    "value type does not match", [instruction, parameters]
+                    "value type does not match",
+                    {"instruction": instruction, "parameters": parameters},
                 )
             parameters[2].value[0][parameters[0].value[0]] = parameters[1]
         elif parameters[0].value[0] in parameters[2].value[0]:
@@ -1164,8 +1402,10 @@ def applyUPDATE(instruction, parameters, stack: List[Data]):
     return parameters[2]
 
 
-def applyXOR(instruction, parameters, stack: List[Data]) -> Data:
-    if parameters[0]["prim"] == "bool":
+def applyXOR(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
+    if parameters[0].prim == "bool":
         return Data(
             "bool",
             [str(parameters[0].value[0].lower() != parameters[1].value[0].lower())],
@@ -1176,7 +1416,11 @@ def applyXOR(instruction, parameters, stack: List[Data]) -> Data:
         )
 
 
-def apply(instruction, parameters, stack: List[Data]) -> None:
+def apply(
+    instruction: Dict[str, Any],
+    parameters: Deque[Data] | Deque[None],
+    stack: Deque[Data],
+) -> None:
     # boilerplate instruction function
     ...
 
@@ -1199,7 +1443,8 @@ def parseBIG_MAP(args, value) -> Data:
     )
     if params is None:
         raise CustomException(
-            "input doesn't match with the specified types", [args, value]
+            "input doesn't match with the specified types",
+            {"args": args, "value": value},
         )
     kv = [x.strip() for x in params[1].split(";")]
     if kv[len(kv) - 1] == "":
@@ -1208,7 +1453,8 @@ def parseBIG_MAP(args, value) -> Data:
         r = re.match(r'Elt\s+([a-zA-Z0-9"_ ]+)\s+(.+)', i)
         if r is None:
             raise CustomException(
-                "input doesn't match with the specified types", [args, value]
+                "input doesn't match with the specified types",
+                {"args": args, "value": value},
             )
         # r[1] is the key, and r[2] is the value
         match getattr(output, "keyType")["prim"]:
@@ -1216,12 +1462,16 @@ def parseBIG_MAP(args, value) -> Data:
                 "int" | "mutez" | "nat" | "timestamp" | "bytes" | "signature" | "bool"
             ):
                 if r[1] in output.value[0]:
-                    raise CustomException("key already present in map", [args, value])
+                    raise CustomException(
+                        "key already present in map", {"args": args, "value": value}
+                    )
             case ("string" | "address" | "key" | "key_hash"):
                 if re.sub(r'^"(.+(?="$))"$', r"\1", r[1]) in output.value[0]:
-                    raise CustomException("key already present in map", [args, value])
+                    raise CustomException(
+                        "key already present in map", {"args": args, "value": value}
+                    )
             case _:
-                raise CustomException("not implemented", [args, value])
+                raise CustomException("not implemented", {"args": args, "value": value})
         output.value[0][r[1]] = globals()[
             "parse" + getattr(output, "valueType")["prim"].upper()
         ](args[1]["args"], r[2])
@@ -1235,7 +1485,7 @@ def parseBOOL(args, value) -> Data:
 def parseBYTES(args, value) -> Data:
     r = re.match(r"0x([a-fA-F0-9]+)", value)
     if r is None:
-        raise CustomException("can't parse", [args, value])
+        raise CustomException("can't parse", {"args": args, "value": value})
     return Data("bytes", [r[1]])
 
 
@@ -1258,7 +1508,8 @@ def parseLIST(args, value) -> Data:
     params = re.match(r"\s*\{((?:.+\s*;)+(?:.+\s*)?)\s*\}\s*", value)
     if params is None:
         raise CustomException(
-            "input doesn't match with the specified types", [args, value]
+            "input doesn't match with the specified types",
+            {"args": args, "value": value},
         )
     elements = [x.strip() for x in params[1].split(";")]
     if elements[len(elements) - 1] == "":
@@ -1280,7 +1531,8 @@ def parseMAP(args, value) -> Data:
     )
     if params is None:
         raise CustomException(
-            "input doesn't match with the specified types", [args, value]
+            "input doesn't match with the specified types",
+            {"args": args, "value": value},
         )
     kv = [x.strip() for x in params[1].split(";")]
     if kv[len(kv) - 1] == "":
@@ -1289,7 +1541,8 @@ def parseMAP(args, value) -> Data:
         r = re.match(r'Elt\s+([a-zA-Z0-9"_ ]+)\s+(.+)', i)
         if r is None:
             raise CustomException(
-                "input doesn't match with the specified types", [args, value]
+                "input doesn't match with the specified types",
+                {"args": args, "value": value},
             )
         # r[1] is the key, and r[2] is the value
         match getattr(output, "keyType")["prim"]:
@@ -1297,12 +1550,16 @@ def parseMAP(args, value) -> Data:
                 "int" | "mutez" | "nat" | "timestamp" | "bytes" | "signature" | "bool"
             ):
                 if r[1] in output.value[0]:
-                    raise CustomException("key already present in map", [args, value])
+                    raise CustomException(
+                        "key already present in map", {"args": args, "value": value}
+                    )
             case ("string" | "address" | "key" | "key_hash"):
                 if re.sub(r'^"(.+(?="$))"$', r"\1", r[1]) in output.value[0]:
-                    raise CustomException("key already present in map", [args, value])
+                    raise CustomException(
+                        "key already present in map", {"args": args, "value": value}
+                    )
             case _:
-                raise CustomException("not implemented", [args, value])
+                raise CustomException("not implemented", {"args": args, "value": value})
         output.value[0][r[1]] = globals()[
             "parse" + getattr(output, "valueType")["prim"].upper()
         ](args[1]["args"], r[2])
@@ -1324,7 +1581,8 @@ def parseOPTION(args, value) -> Data:
     params = re.match(r"\s*\(\s*(?:(?:Some)\s+(.+)|(?:None)\s*)\s*\)\s*", value)
     if params is None:
         raise CustomException(
-            "input doesn't match with the specified types", [args, value]
+            "input doesn't match with the specified types",
+            {"args": args, "value": value},
         )
     if "None" in params[0]:
         setattr(output, "optionValue", "None")
@@ -1344,7 +1602,8 @@ def parseOR(args, value) -> Data:
     output = Data("or", [])
     if params is None:
         raise CustomException(
-            "input doesn't match with the specified types", [args, value]
+            "input doesn't match with the specified types",
+            {"args": args, "value": value},
         )
     setattr(output, "orValue", params[1])
     setattr(output, "orType", args)
@@ -1366,7 +1625,8 @@ def parsePAIR(args, value) -> Data:
     )
     if params is None:
         raise CustomException(
-            "input doesn't match with the specified types", [args, value]
+            "input doesn't match with the specified types",
+            {"args": args, "value": value},
         )
     output.value.append(
         globals()["parse" + args[0]["prim"].upper()](args[0].get("args", []), params[1])
@@ -1384,7 +1644,8 @@ def parseSET(args, value) -> Data:
     params = re.match(r"\s*\{((?:.+\s*;)+(?:.+\s*)?)\s*\}\s*", value)
     if params is None:
         raise CustomException(
-            "input doesn't match with the specified types", [args, value]
+            "input doesn't match with the specified types",
+            {"args": args, "value": value},
         )
     elements = [x.strip() for x in params[1].split(";")]
     if elements[len(elements) - 1] == "":
@@ -1395,13 +1656,17 @@ def parseSET(args, value) -> Data:
                 "int" | "mutez" | "nat" | "timestamp" | "bytes" | "signature" | "bool"
             ):
                 if elements[i] in output.value[0]:
-                    raise CustomException("value already present in set", [args, value])
+                    raise CustomException(
+                        "value already present in set", {"args": args, "value": value}
+                    )
             case ("string" | "address" | "key" | "key_hash"):
                 elements[i] = re.sub(r'^"(.+(?="$))"$', r"\1", elements[i])
                 if elements[i] in output.value[0]:
-                    raise CustomException("value already present in set", [args, value])
+                    raise CustomException(
+                        "value already present in set", {"args": args, "value": value}
+                    )
             case _:
-                raise CustomException("not implemented", [args, value])
+                raise CustomException("not implemented", {"args": args, "value": value})
         output.value[0].add(elements[i])
     return output
 
@@ -1446,11 +1711,11 @@ def parse(args, value) -> Data:
 
 # from https://github.com/sindresorhus/array-move
 # TODO: needs testing
-def arrayMoveMutable(l: List, from_index: int, to_index: int) -> None:
+def dequemove(l: Deque, from_index: int, to_index: int) -> None:
     start_index = len(l) + from_index if from_index < 0 else from_index
     if start_index >= 0 and start_index < len(l):
         end_index = len(l) + to_index if to_index < 0 else to_index
-        l.insert(end_index, l.pop(from_index))
+        l.insert(end_index, popmultiple(l, from_index))
 
 
 def flatten(l: List) -> List:
@@ -1462,3 +1727,10 @@ def flatten(l: List) -> List:
         else:
             o.append(i)
     return o
+
+
+def popmultiple(d: Deque, c: int) -> List:
+    o = []
+    for _ in range(c):
+        o.append(d.pop())
+    return o[::-1]

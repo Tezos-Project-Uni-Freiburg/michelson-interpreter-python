@@ -1,13 +1,15 @@
 #!/usr/bin/python3
+from collections import deque
 import copy
 from dataclasses import dataclass, field
+from typing import Deque, List
 
 
 class CustomException(Exception):
     message: str
-    extra_params: list
+    extra_params: dict
 
-    def __init__(self, message: str, extra_params: list) -> None:
+    def __init__(self, message: str, extra_params: dict) -> None:
         super().__init__(message)
         self.extra_params = extra_params
 
@@ -18,7 +20,7 @@ class Data:
     value: list = field(default_factory=list)
     name: str = ""
     raw: dict = field(default_factory=dict)
-    attributes: set[str] = field(default_factory=set, init=False)
+    attributes: list[str] = field(default_factory=list, init=False)
 
     def __post_init__(self) -> None:
         if self.raw != {}:
@@ -42,18 +44,19 @@ class Data:
                 | "timestamp"
                 | "unit"
             ):
-                self.attributes.update({"C", "PM", "S", "PU", "PA", "B", "D"})
+                self.attributes = ["C", "PM", "S", "PU", "PA", "B", "D"]
             case "big_map":
-                self.attributes.update({"PM", "S", "D"})
+                self.attributes = ["PM", "S", "D"]
             case "lambda" | "list" | "map" | "set":
-                self.attributes.update({"PM", "S", "PU", "PA", "B", "D"})
+                self.attributes = ["PM", "S", "PU", "PA", "B", "D"]
             case "contract":
-                self.attributes.update({"PM", "PA", "D"})
+                self.attributes = ["PM", "PA", "D"]
             case "operation":
-                self.attributes.update({"D"})
+                self.attributes = ["D"]
             case _:
                 raise CustomException(
-                    "unknown data type " + self.prim, [self.prim, self.value, self.name]
+                    "unknown data type " + self.prim,
+                    {"prim": self.prim, "value": self.value, "name": self.name},
                 )
         if len(self.value) == 1 and self.value[0] is None:
             self.value[0] = ""
@@ -61,8 +64,8 @@ class Data:
 
 @dataclass
 class Delta:
-    removed: list[Data] = field(default_factory=list)
-    added: list[Data] = field(default_factory=list)
+    removed: List[Data] = field(default_factory=list)
+    added: List[Data] = field(default_factory=list)
 
 
 @dataclass
