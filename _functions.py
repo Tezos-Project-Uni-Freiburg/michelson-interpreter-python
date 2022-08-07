@@ -32,13 +32,14 @@ def initialize(
 
 def get_instruction_parameters(
     requirements: Dict[str, Any], stack: Deque[Data]
-) -> Deque[Data] | Deque[None]:
+) -> Deque[Data] | None:
     flag = False
     req_elems: Deque[Data] = deque()
     if requirements["multiple"]:
         req_size = len(
             reduce(
-                lambda prev, cur: prev if len(prev) > len(cur) else cur, requirements
+                lambda prev, cur: prev if len(prev) > len(cur) else cur,
+                requirements["l"],
             )
         )
         if req_size > len(stack):
@@ -60,7 +61,7 @@ def get_instruction_parameters(
                 {"requirements": requirements},
             )
     elif requirements["l"][0] is None:
-        return deque([None])
+        return None
     else:
         req_size = len(requirements["l"])
         if req_size > len(stack):
@@ -290,10 +291,8 @@ def process_instruction(instruction: Dict[str, Any], stack: Deque[Data]) -> Step
     parameters = get_instruction_parameters(
         get_instruction_requirements(instruction["prim"]), stack
     )
-    # if len(parameters) != 1 or parameters[0] is not None:
-    #     for _ in range(len(parameters)):
-    #         removed.insert(0, stack.pop())
-    #     assert removed == parameters
+    if parameters is not None:
+        removed.extend(copy.deepcopy(parameters))
 
     result = globals()["apply" + instruction["prim"]](instruction, parameters, stack)
     if result is not None:
@@ -325,22 +324,23 @@ def applyABS(
 def applyADD(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
-    output = Data("", [str(int(parameters[0].value[0]) + int(parameters[1].value[0]))])
+    value = [str(int(parameters[0].value[0]) + int(parameters[1].value[0]))]
+    prim = ""
     match parameters[0].prim:
         case "nat":
-            output.prim = "nat" if parameters[1].prim == "nat" else "int"
+            prim = "nat" if parameters[1].prim == "nat" else "int"
         case "int":
-            output.prim = "timestamp" if parameters[1].prim == "timestamp" else "int"
+            prim = "timestamp" if parameters[1].prim == "timestamp" else "int"
         case "timestamp":
-            output.prim = "timestamp"
+            prim = "timestamp"
         case "mutez":
-            output.prim = "mutez"
+            prim = "mutez"
         case _:
             raise CustomException(
                 "unexpected prim in applyADD",
                 {"instruction": instruction, "parameters": parameters},
             )
-    return output
+    return Data(prim, value)
 
 
 def applyADDRESS(
@@ -351,7 +351,7 @@ def applyADDRESS(
 
 def applyAMOUNT(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
     return Data("mutez", [str(_variables.CURRENT_STATE.amount)])
@@ -384,7 +384,7 @@ def applyAND(
 
 def applyAPPLY(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
     # Not implemented
@@ -393,7 +393,7 @@ def applyAPPLY(
 
 def applyBALANCE(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
     return Data("mutez", [str(_variables.CURRENT_STATE.amount)])
@@ -410,12 +410,12 @@ def applyCAR(instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[
 
 
 def applyCDR(instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]):
-    return parameters[0].value[0]
+    return parameters[0].value[1]
 
 
 def applyCHAIN_ID(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ):
     # Not implemented
@@ -424,7 +424,7 @@ def applyCHAIN_ID(
 
 def applyCHECK_SIGNATURE(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
     # Not implemented
@@ -517,7 +517,7 @@ def applyCONTRACT(
 
 def applyCREATE_CONTRACT(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> List[Data]:
     # Not implemented
@@ -541,7 +541,7 @@ def applyDIP(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
     n = 1
-    if hasattr(instruction["args"][0], "int"):
+    if "int" in instruction["args"][0]:
         n = int(instruction["args"][0].int)
         instruction["args"].pop(0)
     if n + 1 > len(stack):
@@ -564,7 +564,7 @@ def applyDIP(
 def applyDROP(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
-    n = int(instruction["args"][0].int) if hasattr(instruction, "args") else 1
+    n = int(instruction["args"][0].int) if "args" in instruction else 1
     if n > len(stack):
         raise CustomException(
             "not enough elements in the stack",
@@ -595,7 +595,7 @@ def applyDUG(
 def applyDUP(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
-    n = int(instruction["args"][0].int) if hasattr(instruction, "args") else 1
+    n = int(instruction["args"][0].int) if "args" in instruction else 1
     if n == 0:
         raise CustomException(
             "non-allowed value for " + instruction["prim"] + ": " + instruction["args"],
@@ -705,7 +705,7 @@ def applyEQ(
 
 def applyEXEC(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
     # Not implemented
@@ -851,7 +851,7 @@ def applyISNAT(
 
 def applyITER(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> None:
     # Not implemented
@@ -860,7 +860,7 @@ def applyITER(
 
 def applyLAMBDA(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> None:
     # Not implemented
@@ -1044,7 +1044,7 @@ def applyNEQ(
 def applyNIL(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
-    if not hasattr(instruction, "args"):
+    if "args" not in instruction:
         raise CustomException(
             "type of list is not declared",
             {"instruction": instruction, "parameters": parameters},
@@ -1057,7 +1057,7 @@ def applyNIL(
 def applyNONE(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
-    if not hasattr(instruction, "args"):
+    if "args" not in instruction:
         raise CustomException(
             "type of option is not declared",
             {"instruction": instruction, "parameters": parameters},
@@ -1084,7 +1084,7 @@ def applyNOT(
 
 def applyNOW(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
     return Data("timestamp", [str(int(time() * 1000))])
@@ -1124,7 +1124,7 @@ def applyPACK(
 def applyPAIR(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
-    if hasattr(instruction, "args"):
+    if "args" in instruction:
         raise CustomException(
             "PAIR 'n' case hasn't been implemented",
             {"instruction": instruction, "parameters": parameters},
@@ -1134,7 +1134,7 @@ def applyPAIR(
 
 def applyPUSH(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
     output = Data(instruction["args"][0]["prim"], [])
@@ -1204,7 +1204,7 @@ def applyRIGHT(
 
 def applySELF(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
     # Not implemented completely
@@ -1215,7 +1215,7 @@ def applySELF(
 
 def applySENDER(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
     # Not implemented completely/correctly
@@ -1224,7 +1224,7 @@ def applySENDER(
 
 def applySET_DELEGATE(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
     # Not implemented
@@ -1270,7 +1270,7 @@ def applySLICE(
 def applySOME(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
-    if not hasattr(instruction, "args"):
+    if "args" not in instruction:
         raise CustomException(
             "type of option is not declared",
             {"instruction": instruction, "parameters": parameters},
@@ -1288,7 +1288,7 @@ def applySOME(
 
 def applySOURCE(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
     # Not implemented completely
@@ -1330,7 +1330,7 @@ def applySWAP(
 
 def applyTRANSFER_TOKENS(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
     # Not implemented
@@ -1339,7 +1339,7 @@ def applyTRANSFER_TOKENS(
 
 def applyUNIT(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
     return Data("unit", ["Unit"])
@@ -1355,7 +1355,7 @@ def applyUNPACK(
     output = Data("option", [])
     i = Data(instruction["args"][0]["prim"], [])
     # Don't know why this check is here
-    if hasattr(instruction["args"][0], "args") and all(
+    if "args" in instruction["args"][0] and all(
         y == v[x].prim
         for x, y in enumerate(map(lambda x: x.prim, instruction["args"][0]["args"]))
     ):
@@ -1418,7 +1418,7 @@ def applyXOR(
 
 def apply(
     instruction: Dict[str, Any],
-    parameters: Deque[Data] | Deque[None],
+    parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> None:
     # boilerplate instruction function
