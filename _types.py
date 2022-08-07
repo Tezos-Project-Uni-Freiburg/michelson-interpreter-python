@@ -1,8 +1,7 @@
 #!/usr/bin/python3
-from collections import deque
 import copy
 from dataclasses import dataclass, field
-from typing import Deque, List
+from typing import List
 
 
 class CustomException(Exception):

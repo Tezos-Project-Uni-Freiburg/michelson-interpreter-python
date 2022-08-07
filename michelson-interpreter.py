@@ -1,15 +1,13 @@
 #!/usr/bin/python3
 import copy
-from collections import deque
 import dataclasses
 import json
 import re
 import subprocess
 import sys
-from typing import Deque
 import click
 
-from _types import CustomException, Data, Delta, State, Step
+from _types import Delta, State, Step
 from _functions import flatten, initialize, process_instruction
 import _variables
 

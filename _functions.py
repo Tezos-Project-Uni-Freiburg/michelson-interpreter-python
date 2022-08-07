@@ -2,7 +2,6 @@
 import ast
 from collections import deque
 from copy import deepcopy
-import copy
 from datetime import datetime
 from functools import reduce
 from hashlib import blake2b, sha256, sha512
@@ -284,7 +283,7 @@ def get_instruction_requirements(instruction: str) -> Dict[str, bool | List[List
 def process_instruction(instruction: Dict[str, Any], stack: Deque[Data]) -> Step:
     if "IF" in instruction["prim"]:
         _variables.STEPS.append(
-            Step(Delta([], []), [instruction], list(copy.deepcopy(stack)))
+            Step(Delta([], []), [instruction], list(deepcopy(stack)))
         )
     removed: List[Data] = []
     added: List[Data] = []
@@ -292,7 +291,7 @@ def process_instruction(instruction: Dict[str, Any], stack: Deque[Data]) -> Step
         get_instruction_requirements(instruction["prim"]), stack
     )
     if parameters is not None:
-        removed.extend(copy.deepcopy(parameters))
+        removed.extend(deepcopy(parameters))
 
     result = globals()["apply" + instruction["prim"]](instruction, parameters, stack)
     if result is not None:
@@ -309,7 +308,7 @@ def process_instruction(instruction: Dict[str, Any], stack: Deque[Data]) -> Step
                     del i["args"]
                 stack.append(i)
                 added.append(i)
-    return Step(Delta(removed, added), [instruction], list(copy.deepcopy(stack)))
+    return Step(Delta(removed, added), [instruction], list(deepcopy(stack)))
 
 
 # instruction functions
