@@ -21,10 +21,10 @@ def initialize(
     parameter_type: Dict[str, Any], parameter: str, storage_type: dict, storage: str
 ) -> Data:
     parameter_result: Data = globals()["parse" + parameter_type["prim"].upper()](
-        parameter_type["args"], parameter
+        parameter_type.get("args", []), parameter
     )
     storage_result: Data = globals()["parse" + storage_type["prim"].upper()](
-        storage_type["args"], storage
+        storage_type.get("args", []), storage
     )
     return Data("pair", [parameter_result, storage_result])
 
@@ -485,14 +485,14 @@ def applyCONCAT(
             value += i.value[0]
         return Data(
             "string"
-            if getattr(parameters[0], "listType").prim == "string"
+            if getattr(parameters[0], "listType").get("prim", None) == "string"
             else "bytes",
             [value],
         )
 
 
 def applyCONS(instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]):
-    if parameters[0].prim != getattr(parameters[1], "listType").prim:
+    if parameters[0].prim != getattr(parameters[1], "listType").get("prim", None):
         raise CustomException(
             "list type and element type are not same",
             {"instruction": instruction, "parameters": parameters},

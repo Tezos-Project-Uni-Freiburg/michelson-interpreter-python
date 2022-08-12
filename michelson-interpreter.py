@@ -19,7 +19,7 @@ def excepthook(type, value, traceback):
 {value}
 -------------------------------
 Content of the exception:
-{json.dumps(value.extra_params)}
+{json.dumps(value.extra_params if hasattr(value, "extra_params") else [])}
 -------------------------------
 State at the time of exception:
 {json.dumps(dataclasses.asdict(_variables.CURRENT_STATE))}
