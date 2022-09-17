@@ -2,7 +2,6 @@
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Dict, List, Set
-from venv import create
 
 VARIABLES: Dict[str, Set[int]] = {}
 REGENERATE_NAME: bool = False
