@@ -1,7 +1,21 @@
 #!/usr/bin/python3
-import copy
+from copy import deepcopy
 from dataclasses import dataclass, field
-from typing import List
+from typing import Dict, List, Set
+from venv import create
+
+VARIABLES: Dict[str, Set[int]] = {}
+REGENERATE_NAME: bool = False
+
+
+def create_variable(name: str) -> str:
+    n = 0
+    if VARIABLES.get(name):
+        n = max(VARIABLES[name]) + 1
+        VARIABLES[name].add(n)
+    else:
+        VARIABLES[name] = {n}
+    return name + "_" + str(n)
 
 
 class CustomException(Exception):
@@ -22,6 +36,7 @@ class Data:
     attributes: list[str] = field(default_factory=list, init=False)
 
     def __post_init__(self) -> None:
+        self.name = create_variable(self.prim)
         if self.raw != {}:
             ...
         match self.prim:
@@ -60,6 +75,18 @@ class Data:
         if len(self.value) == 1 and self.value[0] is None:
             self.value[0] = ""
 
+    def __deepcopy__(self, memo):
+        # Taken from https://stackoverflow.com/a/15774013/5550674
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            setattr(result, k, deepcopy(v, memo))
+        # Decide on name regeneration
+        if REGENERATE_NAME:
+            result.name = create_variable(result.prim)
+        return result
+
 
 @dataclass
 class Delta:
@@ -85,4 +112,4 @@ class Step:
     stack: list[Data] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        self.stack = copy.deepcopy(self.stack)
+        self.stack = deepcopy(self.stack)
