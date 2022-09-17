@@ -14,6 +14,7 @@ from typing import Any, Deque, Dict, List
 from base58 import b58encode_check
 
 from _types import CustomException, Data, Delta, Step
+import _types
 import _variables
 
 
@@ -541,8 +542,9 @@ def applyDIP(
 ) -> None:
     n = 1
     if "int" in instruction["args"][0]:
-        n = int(instruction["args"][0].int)
+        n = int(instruction["args"][0]["int"])
         instruction["args"].pop(0)
+        instruction["args"] = flatten(instruction["args"][0])
     if n + 1 > len(stack):
         raise CustomException(
             "not enough elements in stack",
@@ -605,7 +607,11 @@ def applyDUP(
             "not enough elements in the stack",
             {"instruction": instruction, "parameters": parameters},
         )
-    return deepcopy(stack[len(stack) - n])
+    # Kind of a lame solution but works ¯\_(ツ)_/¯
+    _types.REGENERATE_NAME = True
+    output = deepcopy(stack[len(stack) - n])
+    _types.REGENERATE_NAME = False
+    return output
 
 
 def applyEDIV(
