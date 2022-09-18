@@ -1,21 +1,21 @@
 #!/usr/bin/python3
 import ast
+import json
+import re
 from collections import deque
 from copy import deepcopy
 from datetime import datetime
 from functools import reduce
 from hashlib import blake2b, sha256, sha512
-import json
 from math import trunc
-import re
 from time import time
 from typing import Any, Deque, Dict, List
 
 from base58 import b58encode_check
 
-from _types import CustomException, Data, Delta, Step
 import _types
 import _variables
+from _types import CustomException, Data, Delta, Step
 
 
 def initialize(
@@ -1723,10 +1723,13 @@ def dequemove(l: Deque, from_index: int, to_index: int) -> None:
         l.insert(end_index, popmultiple(l, from_index))
 
 
-def flatten(l: List) -> List:
+def flatten(l: List, skip_ifs: bool = False) -> List:
     o = []
     for i in l:
         if isinstance(i, list):
+            if skip_ifs and not isinstance(i[-1], list) and i[-1]["prim"] == "IF":
+                o.append(i)
+                continue
             for j in i:
                 o.append(j)
         else:
