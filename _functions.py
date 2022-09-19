@@ -554,9 +554,12 @@ def applyDIP(
     for i in range(n):
         p.insert(0, stack.pop())
     for i in flatten(instruction["args"]):
-        step = process_instruction(i, stack)
-        if "IF" not in i["prim"]:
-            _variables.STEPS.append(step)
+        if isinstance(i, list):
+            process_ifmacro(i)
+        else:
+            step = process_instruction(i, stack)
+            if "IF" not in i["prim"]:
+                _variables.STEPS.append(step)
     for i in p:
         stack.append(i)
     return None
@@ -770,13 +773,11 @@ def applyHASH_KEY(
 def applyIF(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
-    if parameters[0].value[0].lower() == "true":
-        for i in flatten(instruction["args"][0]):
-            step = process_instruction(i, stack)
-            if "IF" not in i["prim"]:
-                _variables.STEPS.append(step)
-    else:
-        for i in flatten(instruction["args"][1]):
+    branch = 0 if parameters[0].value[0].lower() == "true" else 1
+    for i in flatten(instruction["args"][branch]):
+        if isinstance(i, list):
+            process_ifmacro(i)
+        else:
             step = process_instruction(i, stack)
             if "IF" not in i["prim"]:
                 _variables.STEPS.append(step)
@@ -794,9 +795,12 @@ def applyIF_CONS(
     else:
         branch = 1
     for i in flatten(instruction["args"][branch]):
-        step = process_instruction(i, stack)
-        if "IF" not in i.prim:
-            _variables.STEPS.append(step)
+        if isinstance(i, list):
+            process_ifmacro(i)
+        else:
+            step = process_instruction(i, stack)
+            if "IF" not in i["prim"]:
+                _variables.STEPS.append(step)
     return None
 
 
@@ -806,9 +810,12 @@ def applyIF_LEFT(
     stack.append(parameters[0].value[0])
     branch = 0 if getattr(parameters[0], "orValue") == "Left" else 1
     for i in flatten(instruction["args"][branch]):
-        step = process_instruction(i, stack)
-        if "IF" not in i.prim:
-            _variables.STEPS.append(step)
+        if isinstance(i, list):
+            process_ifmacro(i)
+        else:
+            step = process_instruction(i, stack)
+            if "IF" not in i["prim"]:
+                _variables.STEPS.append(step)
     return None
 
 
@@ -821,9 +828,12 @@ def applyIF_NONE(
         branch = 1
         stack.append(parameters[0].value[0])
     for i in flatten(instruction["args"][branch]):
-        step = process_instruction(i, stack)
-        if "IF" not in i.prim:
-            _variables.STEPS.append(step)
+        if isinstance(i, list):
+            process_ifmacro(i)
+        else:
+            step = process_instruction(i, stack)
+            if "IF" not in i["prim"]:
+                _variables.STEPS.append(step)
     return None
 
 
@@ -906,9 +916,12 @@ def applyLOOP(
         v = top.value[0].lower() == "true"
     while v:
         for i in flatten(instruction["args"]):
-            step = process_instruction(i, stack)
-            if "IF" not in i.prim:
-                _variables.STEPS.append(step)
+            if isinstance(i, list):
+                process_ifmacro(i)
+            else:
+                step = process_instruction(i, stack)
+                if "IF" not in i["prim"]:
+                    _variables.STEPS.append(step)
         top = stack.pop()
         if top.prim != "bool":
             raise CustomException(
@@ -937,9 +950,12 @@ def applyLOOP_LEFT(
         v = True
     while v:
         for i in flatten(instruction["args"]):
-            step = process_instruction(i, stack)
-            if "IF" not in i.prim:
-                _variables.STEPS.append(step)
+            if isinstance(i, list):
+                process_ifmacro(i)
+            else:
+                step = process_instruction(i, stack)
+                if "IF" not in i["prim"]:
+                    _variables.STEPS.append(step)
         top = stack.pop()
         v = False
         if top.prim != "or":
@@ -1723,10 +1739,12 @@ def dequemove(l: Deque, from_index: int, to_index: int) -> None:
         l.insert(end_index, popmultiple(l, from_index))
 
 
-def flatten(l: List, skip_ifs: bool = False) -> List:
+def flatten(l: List, skip_ifs: bool = True) -> List:
     o = []
     for i in l:
         if isinstance(i, list):
+            if len(i) == 0:
+                continue
             if skip_ifs and not isinstance(i[-1], list) and i[-1]["prim"] == "IF":
                 o.append(i)
                 continue
@@ -1742,3 +1760,48 @@ def popmultiple(d: Deque, c: int) -> List:
     for _ in range(c):
         o.append(d.pop())
     return o[::-1]
+
+
+def process_ifmacro(l: List[Dict[str, Any]]) -> None:
+    # TODO: definitely the most inefficient-looking part of the codebase
+    CPC = _variables.CURRENT_PATH_CONSTRAINT
+    op = _variables.OPS[l[1 if l[0]["prim"] == "COMPARE" else 0]["prim"]]
+    CPC.initial_variables.append(_types.SYMBOLIC_VARIABLES[_variables.STACK[-1].name])
+    # Some preprocessing
+    if l[0]["prim"] == "COMPARE":
+        CPC.initial_variables.append(
+            _types.SYMBOLIC_VARIABLES[_variables.STACK[-2].name]
+        )
+        # Execute COMPARE here
+        ins_c = l.pop(0)
+        step = process_instruction(ins_c, _variables.STACK)
+        if step is not None:
+            _variables.STEPS.append(step)
+    else:  # EQ, GE, etc...
+        CPC.initial_variables.append("0")
+    CPC.predicates.append(
+        f"{CPC.initial_variables[-2]} {op} {CPC.initial_variables[-1]}"
+    )
+    if CPC.initial_variables[-1] == "0":
+        _ = CPC.initial_variables.pop()
+    ins_op, ins_if = l[0], l[1]
+    # Execute EQ, GE, etc. here
+    step = process_instruction(ins_op, _variables.STACK)
+    if step is not None:
+        _variables.STEPS.append(step)
+    # Now we know which branch will be executed
+    # negating & forking the current path constraint
+    _variables.PATH_CONSTRAINTS.append(deepcopy(CPC))
+    if _variables.STACK[-1].value[0].lower() == "true":
+        # _variables.PATH_CONSTRAINTS[-1].predicates = [
+        #     "!",
+        #     _variables.PATH_CONSTRAINTS[-1].predicates,
+        # ]
+        _variables.PATH_CONSTRAINTS[-1].predicates.insert(
+            len(_variables.PATH_CONSTRAINTS[-1].predicates) - 1, "!"
+        )
+    else:
+        # CPC.predicates = ["!", CPC.predicates]
+        CPC.predicates.insert(len(CPC.predicates) - 1, "!")
+    # Now processing the actual IF
+    _ = process_instruction(ins_if, _variables.STACK)

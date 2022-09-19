@@ -16,9 +16,9 @@ class CustomException(Exception):
 @dataclass
 class Data:
     prim: str = ""
-    value: list = field(default_factory=list)
+    value: List = field(default_factory=list)
     name: str = ""
-    attributes: list[str] = field(default_factory=list, init=False)
+    attributes: List[str] = field(default_factory=list, init=False)
 
     def __post_init__(self) -> None:
         match self.prim:
@@ -95,8 +95,8 @@ class State:
 @dataclass
 class Step:
     delta: Delta
-    instruction: list = field(default_factory=list)
-    stack: list[Data] = field(default_factory=list)
+    instruction: List = field(default_factory=list)
+    stack: List[Data] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.stack = deepcopy(self.stack)

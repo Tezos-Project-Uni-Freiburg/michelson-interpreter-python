@@ -10,7 +10,7 @@ import click
 
 import _types
 import _variables
-from _functions import flatten, initialize, process_instruction
+from _functions import flatten, initialize, process_ifmacro, process_instruction
 
 
 def excepthook(type, value, traceback):
@@ -106,15 +106,17 @@ def michelson_interpreter(
     parameter_type, storage_type, code = (
         s[0],
         s[1],
-        flatten(
-            flatten(s[2]["args"], skip_ifs=True), skip_ifs=True
-        ),  # TODO: outer `flatten` seems to be just to make sure, could find a better way for this
+        # TODO: outer `flatten` seems to be just to make sure, could find a better way for this
+        flatten(flatten(s[2]["args"])),
     )
 
     _variables.STACK.append(
         initialize(
             parameter_type["args"][0], parameter, storage_type["args"][0], storage
         )
+    )
+    _variables.CURRENT_PATH_CONSTRAINT.input_variables.append(
+        copy.deepcopy(_variables.STACK[-1])
     )
     _variables.STATES.append(copy.deepcopy(_variables.CURRENT_STATE))
     _variables.STEPS.append(
@@ -127,196 +129,19 @@ def michelson_interpreter(
 
     for i in code:
         if isinstance(i, list):
-            # TODO: definitely the most inefficient-looking part of the codebase
-            op = ""
-            if i[0]["prim"] == "COMPARE":
-                _variables.CURRENT_PATH_CONSTRAINT.initial_variables.extend(
-                    [
-                        _types.SYMBOLIC_VARIABLES[_variables.STACK[-1].name],
-                        _types.SYMBOLIC_VARIABLES[_variables.STACK[-2].name],
-                    ]
-                )
-                match i[1]["prim"]:
-                    case "EQ":
-                        op = "=="
-                    case "GE":
-                        op = ">="
-                    case "GT":
-                        op = ">"
-                    case "LE":
-                        op = "<="
-                    case "LT":
-                        op = "<"
-                    case "NEQ":
-                        op = "!="
-                    case _:
-                        ...
-                _variables.CURRENT_PATH_CONSTRAINT.predicates.append(
-                    f"{_variables.CURRENT_PATH_CONSTRAINT.initial_variables[0]} {op} {_variables.CURRENT_PATH_CONSTRAINT.initial_variables[1]}"
-                )
-                # Need to execute COMPARE here
-                ...
-            else:
-                _variables.CURRENT_PATH_CONSTRAINT.initial_variables.append(
-                    _types.SYMBOLIC_VARIABLES[_variables.STACK[-1].name]
-                )
-                match i[0]["prim"]:
-                    case "EQ":
-                        op = "=="
-                    case "GE":
-                        op = ">="
-                    case "GT":
-                        op = ">"
-                    case "LE":
-                        op = "<="
-                    case "LT":
-                        op = "<"
-                    case "NEQ":
-                        op = "!="
-                    case _:
-                        ...
-                _variables.CURRENT_PATH_CONSTRAINT.predicates.append(
-                    f"{_variables.CURRENT_PATH_CONSTRAINT.initial_variables[0]} {op} 0"
-                )
-                ...
-            # Need to start recording whatever happens to this variable
-            # _variables.CURRENT_PATH_CONSTRAINT.initial_variables = (
-            #     [_types.SYMBOLIC_VARIABLES[_variables.STACK[-1].name]]
-            # )
-            # for j in i:  # these are the actual instructions
-            #     match j["prim"]:
-            #         # Need to check that there are enough variables of acceptable types
-            #         case "COMPARE":
-            #             if (
-            #                 len(_variables.CURRENT_PATH_CONSTRAINT.initial_variables)
-            #                 == 0
-            #             ):
-            #                 _variables.CURRENT_PATH_CONSTRAINT.initial_variables.extend(
-            #                     [
-            #                         _types.SYMBOLIC_VARIABLES[
-            #                             _variables.STACK[-1].name
-            #                         ],
-            #                         _types.SYMBOLIC_VARIABLES[
-            #                             _variables.STACK[-2].name
-            #                         ],
-            #                     ]
-            #                 )
-            #             step = process_instruction(j, _variables.STACK)
-            #             if step is not None and "IF" not in j["prim"]:
-            #                 _variables.STEPS.append(step)
-            #             r = int(_variables.STACK[-1].value[0])
-            #             op = "<" if r == -1 else ">" if r == 1 else "=="
-            #             _variables.CURRENT_PATH_CONSTRAINT.predicates.append(
-            #                 f"{_variables.CURRENT_PATH_CONSTRAINT.initial_variables[0]} {op} {_variables.CURRENT_PATH_CONSTRAINT.initial_variables[1]}"
-            #             )
-            #         case "EQ":
-            #             if (
-            #                 len(_variables.CURRENT_PATH_CONSTRAINT.initial_variables)
-            #                 == 0
-            #             ):
-            #                 _variables.CURRENT_PATH_CONSTRAINT.initial_variables.extend(
-            #                     [
-            #                         _types.SYMBOLIC_VARIABLES[
-            #                             _variables.STACK[-1].name
-            #                         ],
-            #                     ]
-            #                 )
-            #             step = process_instruction(j, _variables.STACK)
-            #             if step is not None and "IF" not in j["prim"]:
-            #                 _variables.STEPS.append(step)
-            #             # parameters[0].value[0].lower() == "true"
-
-            #             ...
-            #         case "GE":
-            #             if (
-            #                 len(_variables.CURRENT_PATH_CONSTRAINT.initial_variables)
-            #                 == 0
-            #             ):
-            #                 _variables.CURRENT_PATH_CONSTRAINT.initial_variables.extend(
-            #                     [
-            #                         _types.SYMBOLIC_VARIABLES[
-            #                             _variables.STACK[-1].name
-            #                         ],
-            #                     ]
-            #                 )
-            #             step = process_instruction(j, _variables.STACK)
-            #             if step is not None and "IF" not in j["prim"]:
-            #                 _variables.STEPS.append(step)
-            #             ...
-            #         case "GT":
-            #             if (
-            #                 len(_variables.CURRENT_PATH_CONSTRAINT.initial_variables)
-            #                 == 0
-            #             ):
-            #                 _variables.CURRENT_PATH_CONSTRAINT.initial_variables.extend(
-            #                     [
-            #                         _types.SYMBOLIC_VARIABLES[
-            #                             _variables.STACK[-1].name
-            #                         ],
-            #                     ]
-            #                 )
-            #             step = process_instruction(j, _variables.STACK)
-            #             if step is not None and "IF" not in j["prim"]:
-            #                 _variables.STEPS.append(step)
-            #             ...
-            #         case "LE":
-            #             if (
-            #                 len(_variables.CURRENT_PATH_CONSTRAINT.initial_variables)
-            #                 == 0
-            #             ):
-            #                 _variables.CURRENT_PATH_CONSTRAINT.initial_variables.extend(
-            #                     [
-            #                         _types.SYMBOLIC_VARIABLES[
-            #                             _variables.STACK[-1].name
-            #                         ],
-            #                     ]
-            #                 )
-            #             step = process_instruction(j, _variables.STACK)
-            #             if step is not None and "IF" not in j["prim"]:
-            #                 _variables.STEPS.append(step)
-            #             ...
-            #         case "LT":
-            #             if (
-            #                 len(_variables.CURRENT_PATH_CONSTRAINT.initial_variables)
-            #                 == 0
-            #             ):
-            #                 _variables.CURRENT_PATH_CONSTRAINT.initial_variables.extend(
-            #                     [
-            #                         _types.SYMBOLIC_VARIABLES[
-            #                             _variables.STACK[-1].name
-            #                         ],
-            #                     ]
-            #                 )
-            #             step = process_instruction(j, _variables.STACK)
-            #             if step is not None and "IF" not in j["prim"]:
-            #                 _variables.STEPS.append(step)
-            #             ...
-            #         case "NEQ":
-            #             if (
-            #                 len(_variables.CURRENT_PATH_CONSTRAINT.initial_variables)
-            #                 == 0
-            #             ):
-            #                 _variables.CURRENT_PATH_CONSTRAINT.initial_variables.extend(
-            #                     [
-            #                         _types.SYMBOLIC_VARIABLES[
-            #                             _variables.STACK[-1].name
-            #                         ],
-            #                     ]
-            #                 )
-            #             step = process_instruction(j, _variables.STACK)
-            #             if step is not None and "IF" not in j["prim"]:
-            #                 _variables.STEPS.append(step)
-            #             ...
-            #         case _:
-            #             # IF should be caught here (or maybe below this?)
-            #             ...
-            # ...
+            process_ifmacro(i)
         else:
             step = process_instruction(i, _variables.STACK)
             if step is not None and "IF" not in i["prim"]:
                 _variables.STEPS.append(step)
 
+    (
+        _variables.CURRENT_PATH_CONSTRAINT.is_processed,
+        _variables.CURRENT_PATH_CONSTRAINT.is_satisfiable,
+    ) = (True, True)
+
     print(json.dumps([dataclasses.asdict(x) for x in _variables.STEPS]))
+    print(json.dumps([dataclasses.asdict(x) for x in _variables.PATH_CONSTRAINTS]))
 
 
 if __name__ == "__main__":
