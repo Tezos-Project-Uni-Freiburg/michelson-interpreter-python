@@ -281,7 +281,9 @@ def get_instruction_requirements(instruction: str) -> Dict[str, bool | List[List
     return requirements
 
 
-def process_instruction(instruction: Dict[str, Any], stack: Deque[Data]) -> Step:
+def process_instruction(
+    instruction: Dict[str, Any], stack: Deque[Data], unpair_flag: bool = False
+) -> Step:
     if "IF" in instruction["prim"]:
         _variables.STEPS.append(
             Step(Delta([], []), [instruction], list(deepcopy(stack)))
@@ -293,8 +295,9 @@ def process_instruction(instruction: Dict[str, Any], stack: Deque[Data]) -> Step
     )
     if parameters is not None:
         removed.extend(deepcopy(parameters))
-
+    _variables.UNPAIR_FLAG = unpair_flag
     result = globals()["apply" + instruction["prim"]](instruction, parameters, stack)
+    _variables.UNPAIR_FLAG = False
     if result is not None:
         if not isinstance(result, list):
             if hasattr(result, "args") and not hasattr(result, "value"):
@@ -611,7 +614,7 @@ def applyDUP(
             {"instruction": instruction, "parameters": parameters},
         )
     # Kind of a lame solution but works ¯\_(ツ)_/¯
-    _types.REGENERATE_NAME = True
+    _types.REGENERATE_NAME = not _variables.UNPAIR_FLAG
     output = deepcopy(stack[len(stack) - n])
     _types.REGENERATE_NAME = False
     return output
@@ -1805,3 +1808,16 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
         CPC.predicates.insert(len(CPC.predicates) - 1, "!")
     # Now processing the actual IF
     _ = process_instruction(ins_if, _variables.STACK)
+
+
+def process_unpairmacro(l: List[Dict[str, Any]]) -> None:
+    # Process DUP
+    dup = l.pop(0)
+    step = process_instruction(dup, _variables.STACK, unpair_flag=True)
+    if step is not None and "IF" not in dup["prim"]:
+        _variables.STEPS.append(step)
+    # Process the rest
+    for i in flatten(l):
+        step = process_instruction(i, _variables.STACK)
+        if step is not None and "IF" not in i["prim"]:
+            _variables.STEPS.append(step)

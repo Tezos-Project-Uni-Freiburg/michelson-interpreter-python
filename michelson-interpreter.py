@@ -10,7 +10,13 @@ import click
 
 import _types
 import _variables
-from _functions import flatten, initialize, process_ifmacro, process_instruction
+from _functions import (
+    flatten,
+    initialize,
+    process_ifmacro,
+    process_unpairmacro,
+    process_instruction,
+)
 
 
 def excepthook(type, value, traceback):
@@ -107,7 +113,8 @@ def michelson_interpreter(
         s[0],
         s[1],
         # TODO: outer `flatten` seems to be just to make sure, could find a better way for this
-        flatten(flatten(s[2]["args"])),
+        # Removed two levels of flattens here
+        s[2]["args"],
     )
 
     _variables.STACK.append(
@@ -129,7 +136,10 @@ def michelson_interpreter(
 
     for i in code:
         if isinstance(i, list):
-            process_ifmacro(i)
+            if i[-1]["prim"] == "IF":
+                process_ifmacro(i)
+            else:
+                process_unpairmacro(i)
         else:
             step = process_instruction(i, _variables.STACK)
             if step is not None and "IF" not in i["prim"]:

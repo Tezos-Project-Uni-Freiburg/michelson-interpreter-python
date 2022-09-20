@@ -11,6 +11,7 @@ STACK: Deque[Data] = deque()
 STATES: List[State] = []
 STEPS: List[Step] = []
 PATH_CONSTRAINTS: List[PathConstraint] = []
+UNPAIR_FLAG: bool = False
 
 # Constants
 OPS = {
