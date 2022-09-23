@@ -17,6 +17,7 @@ class CustomException(Exception):
 class Data:
     prim: str = ""
     value: List = field(default_factory=list)
+    parent: str | None = None
     name: str = ""
     attributes: List[str] = field(default_factory=list, init=False)
 

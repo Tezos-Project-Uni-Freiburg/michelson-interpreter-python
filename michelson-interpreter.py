@@ -11,7 +11,6 @@ import click
 import _types
 import _variables
 from _functions import (
-    flatten,
     initialize,
     process_ifmacro,
     process_unpairmacro,
@@ -145,10 +144,9 @@ def michelson_interpreter(
             if step is not None and "IF" not in i["prim"]:
                 _variables.STEPS.append(step)
 
-    (
-        _variables.CURRENT_PATH_CONSTRAINT.is_processed,
-        _variables.CURRENT_PATH_CONSTRAINT.is_satisfiable,
-    ) = (True, True)
+    _variables.CURRENT_PATH_CONSTRAINT.is_processed = (
+        _variables.CURRENT_PATH_CONSTRAINT.is_satisfiable
+    ) = True
 
     print(json.dumps([dataclasses.asdict(x) for x in _variables.STEPS]))
     print(json.dumps([dataclasses.asdict(x) for x in _variables.PATH_CONSTRAINTS]))

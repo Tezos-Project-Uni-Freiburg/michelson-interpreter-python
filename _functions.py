@@ -21,13 +21,17 @@ from _types import CustomException, Data, Delta, Step
 def initialize(
     parameter_type: Dict[str, Any], parameter: str, storage_type: dict, storage: str
 ) -> Data:
+    output = Data("pair", [])
     parameter_result: Data = globals()["parse" + parameter_type["prim"].upper()](
         parameter_type.get("args", []), parameter
     )
+    setattr(parameter_result, "parent", output.name)
     storage_result: Data = globals()["parse" + storage_type["prim"].upper()](
         storage_type.get("args", []), storage
     )
-    return Data("pair", [parameter_result, storage_result])
+    setattr(storage_result, "parent", output.name)
+    output.value.extend([parameter_result, storage_result])
+    return output
 
 
 def get_instruction_parameters(
@@ -510,11 +514,12 @@ def applyCONTRACT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
     # Not implemented completely
-    c = Data("contract", [parameters[0]])
-    setattr(c, "contractType", instruction["args"][0])
-    output = Data("option", [c])
+    output = Data("option", [])
     setattr(output, "optionValue", "Some")
     setattr(output, "optionType", ["contract"])
+    c = Data("contract", [parameters[0]], output.name)
+    setattr(c, "contractType", instruction["args"][0])
+    output.value.append(c)
     return output
 
 
@@ -656,7 +661,9 @@ def applyEDIV(
             else:
                 t1 = "nat"
             t2 = "mutez"
-    output.value.append(Data("pair", [Data(t1, [str(q)]), Data(t2, [str(r)])]))
+    p = Data("pair", [], output.name)
+    p.value.extend([Data(t1, [str(q)], p.name), Data(t2, [str(r)], p.name)])
+    output.value.append(p)
     return output
 
 
@@ -687,7 +694,10 @@ def applyEMPTY_MAP(
             "kty is not comparable",
             {"instruction": instruction, "parameters": parameters},
         )
-    return Data("map", [instruction["args"][0]["prim"], instruction["args"][1]["prim"]])
+    output = Data("map", [dict()])
+    setattr(output, "keyType", instruction["args"][0])
+    setattr(output, "valueType", instruction["args"][1])
+    return output
 
 
 def applyEMPTY_SET(
@@ -844,7 +854,7 @@ def applyIMPLICIT_ACCOUNT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
     output = Data("contract", [parameters[0]])
-    setattr(output, "contractType", Data("unit", ["Unit"]))
+    setattr(output, "contractType", Data("unit", ["Unit"], output.name))
     return output
 
 
@@ -863,7 +873,7 @@ def applyISNAT(
         setattr(output, "optionValue", "None")
     else:
         setattr(output, "optionValue", "Some")
-        output.value.append(Data("nat", [parameters[0].value[0]]))
+        output.value.append(Data("nat", [parameters[0].value[0]], output.name))
     return output
 
 
@@ -1153,7 +1163,9 @@ def applyPAIR(
             "PAIR 'n' case hasn't been implemented",
             {"instruction": instruction, "parameters": parameters},
         )
-    return Data("pair", [parameters[0], parameters[1]])
+    output = Data("pair", [parameters[0], parameters[1]])
+    parameters[0].parent = parameters[1].parent = output.name
+    return output
 
 
 def applyPUSH(
@@ -1175,6 +1187,7 @@ def applyPUSH(
                         or instruction["args"][i]["bytes"]
                         or instruction["args"][i]["prim"]
                     ],
+                    output.name,
                 )
                 output.value[0].append(v0)
         case "option":
@@ -1189,6 +1202,7 @@ def applyPUSH(
                         or instruction["args"][1]["args"][0]["bytes"]
                         or instruction["args"][1]["args"][0]["prim"]
                     ],
+                    output.name,
                 )
                 output.value.append(v1)
         case "or":
@@ -1204,6 +1218,7 @@ def applyPUSH(
                     or instruction["args"][1]["args"][0]["bytes"]
                     or instruction["args"][1]["args"][0]["prim"]
                 ],
+                output.name,
             )
             output.value.append(v2)
         case _:
@@ -1221,6 +1236,7 @@ def applyRIGHT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
     output = Data("or", [parameters[0]])
+    parameters[0].parent = output.name
     setattr(output, "orValue", "Right")
     setattr(output, "orType", [instruction["args"][0]["prim"], parameters[0].prim])
     return output
@@ -1232,8 +1248,11 @@ def applySELF(
     stack: Deque[Data],
 ) -> Data:
     # Not implemented completely
-    output = Data("contract", [Data("address", [_variables.CURRENT_STATE.address])])
+    output = Data("contract", [])
     setattr(output, "contractType", "Unit")
+    output.value.append(
+        Data("address", [_variables.CURRENT_STATE.address], output.name)
+    )
     return output
 
 
@@ -1286,7 +1305,7 @@ def applySLICE(
     elif offset < len(_str) and offset + _len <= len(_str):
         setattr(output, "optionValue", "Some")
         output.value.append(
-            Data(parameters[2].prim, [_str[slice(offset, offset + _len)]])
+            Data(parameters[2].prim, [_str[slice(offset, offset + _len)]], output.name)
         )
     return output
 
@@ -1305,6 +1324,7 @@ def applySOME(
             {"instruction": instruction, "parameters": parameters},
         )
     output = Data("option", [parameters[0]])
+    parameters[0].parent = output.name
     setattr(output, "optionValue", "Some")
     setattr(output, "optionType", [instruction["args"][0]["prim"]])
     return output
@@ -1377,7 +1397,7 @@ def applyUNPACK(
         json.dumps(bytes.fromhex(parameters[0].value[0]).decode("utf-8"))
     )
     output = Data("option", [])
-    i = Data(instruction["args"][0]["prim"], [])
+    i = Data(instruction["args"][0]["prim"], [], output.name)
     # Don't know why this check is here
     if "args" in instruction["args"][0] and all(
         y == v[x].prim
@@ -1396,6 +1416,7 @@ def applyUNPACK(
 def applyUPDATE(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ):
+    # TODO: missing Data parent update
     if parameters[1].prim == "bool":
         if parameters[0].prim != getattr(parameters[2], "setType"):
             raise CustomException(
@@ -1539,9 +1560,9 @@ def parseLIST(args, value) -> Data:
     if elements[len(elements) - 1] == "":
         elements.pop()
     for i in elements:
-        output.value[0].append(
-            globals()["parse" + getattr(output, "listType")["prim"].upper()](args[0], i)
-        )
+        v = globals()["parse" + getattr(output, "listType")["prim"].upper()](args[0], i)
+        setattr(v, "parent", output.name)
+        output.value[0].append(v)
     return output
 
 
@@ -1612,11 +1633,11 @@ def parseOPTION(args, value) -> Data:
         setattr(output, "optionValue", "None")
     else:
         setattr(output, "optionValue", "Some")
-        output.value.append(
-            globals()["parse" + getattr(output, "optionType")[0].upper()](
-                args, params[1]
-            )
+        v = globals()["parse" + getattr(output, "optionType")[0].upper()](
+            args, params[1]
         )
+        setattr(v, "parent", output.name)
+        output.value.append(v)
     return output
 
 
@@ -1631,14 +1652,14 @@ def parseOR(args, value) -> Data:
         )
     setattr(output, "orValue", params[1])
     setattr(output, "orType", args)
-    output.value.append(
-        Data(
-            getattr(output, "orType")[0]["prim"]
-            if getattr(output, "orValue") == "Left"
-            else getattr(output, "orType")[1]["prim"],
-            [params[2]],
-        )
+    v = Data(
+        getattr(output, "orType")[0]["prim"]
+        if getattr(output, "orValue") == "Left"
+        else getattr(output, "orType")[1]["prim"],
+        [params[2]],
     )
+    v.parent = output.name
+    output.value.append(v)
     return output
 
 
@@ -1652,12 +1673,15 @@ def parsePAIR(args, value) -> Data:
             "input doesn't match with the specified types",
             {"args": args, "value": value},
         )
-    output.value.append(
-        globals()["parse" + args[0]["prim"].upper()](args[0].get("args", []), params[1])
+    v1 = globals()["parse" + args[0]["prim"].upper()](
+        args[0].get("args", []), params[1]
     )
-    output.value.append(
-        globals()["parse" + args[1]["prim"].upper()](args[1].get("args", []), params[2])
+    setattr(v1, "parent", output.name)
+    v2 = globals()["parse" + args[1]["prim"].upper()](
+        args[1].get("args", []), params[2]
     )
+    setattr(v2, "parent", output.name)
+    output.value.extend([v1, v2])
     return output
 
 
