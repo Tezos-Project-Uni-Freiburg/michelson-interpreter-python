@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 from copy import deepcopy
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Dict, List, Set
 
 
@@ -57,23 +58,10 @@ class Data:
                 )
         if len(self.value) == 1 and self.value[0] is None:
             self.value[0] = ""
-        self.name = create_variable(self.prim)
+        if self.name == "":
+            self.name = create_variable(self.prim)
         CONCRETE_VARIABLES[self.name] = self
         SYMBOLIC_VARIABLES[self.name] = self.name + "_s"
-
-    def __deepcopy__(self, memo):
-        # Taken from https://stackoverflow.com/a/15774013/5550674
-        cls = self.__class__
-        result = cls.__new__(cls)
-        memo[id(self)] = result
-        for k, v in self.__dict__.items():
-            setattr(result, k, deepcopy(v, memo))
-        # Decide on name regeneration
-        if REGENERATE_NAME:
-            result.name = create_variable(result.prim)
-            CONCRETE_VARIABLES[result.name] = result
-            SYMBOLIC_VARIABLES[result.name] = result.name + "_s"
-        return result
 
 
 @dataclass
@@ -87,10 +75,14 @@ class State:
     account: str = ""
     address: str = ""
     amount: int = 0
+    balance: int = 0
     entrypoint: str = "default"
     gas_limit: int = 0
     id: int = 0
-    timestamp: int = 0
+    timestamp: int = int(datetime.now().timestamp())
+
+    def __post_init__(self) -> None:
+        self.balance += self.amount
 
 
 @dataclass
@@ -105,9 +97,8 @@ class Step:
 
 @dataclass
 class PathConstraint:
-    input_variables: List[Data] = field(default_factory=list)
+    input_variables: Set[str] = field(default_factory=set)
     predicates: List[Any] = field(default_factory=list)
-    initial_variables: List[str] = field(default_factory=list)
     is_processed: bool = False
     is_satisfiable: bool = False
 
@@ -115,7 +106,6 @@ class PathConstraint:
 VARIABLE_NAMES: Dict[str, Set[int]] = {}
 CONCRETE_VARIABLES: Dict[str, Data] = {}
 SYMBOLIC_VARIABLES: Dict[str, Any] = {}
-REGENERATE_NAME: bool = False
 
 
 def create_variable(name: str) -> str:

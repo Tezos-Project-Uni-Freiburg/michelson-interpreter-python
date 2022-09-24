@@ -361,7 +361,8 @@ def applyAMOUNT(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
-    return Data("mutez", [str(_variables.CURRENT_STATE.amount)])
+    output = Data("mutez", [str(_variables.CURRENT_STATE.amount)], None, "sv_amount")
+    return output
 
 
 def applyAND(
@@ -403,7 +404,7 @@ def applyBALANCE(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
-    return Data("mutez", [str(_variables.CURRENT_STATE.amount)])
+    return Data("mutez", [str(_variables.CURRENT_STATE.balance)], None, "sv_balance")
 
 
 def applyBLAKE2B(
@@ -426,7 +427,7 @@ def applyCHAIN_ID(
     stack: Deque[Data],
 ):
     # Not implemented
-    return Data("chain_id", [""])
+    return Data("chain_id", ["0x1"], None, "sv_chain_id")
 
 
 def applyCHECK_SIGNATURE(
@@ -535,13 +536,13 @@ def applyCREATE_CONTRACT(
 def applyDIG(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
-    if instruction["args"][0].int != 0:
-        if instruction["args"][0].int > len(stack) - 1:
+    if instruction["args"][0]["int"] != 0:
+        if instruction["args"][0]["int"] > len(stack) - 1:
             raise CustomException(
                 "not enough elements in the stack",
                 {"instruction": instruction, "parameters": parameters},
             )
-        dequemove(stack, len(stack) - 1 - instruction["args"][0].int, len(stack) - 1)
+        dequemove(stack, len(stack) - 1 - instruction["args"][0]["int"], len(stack) - 1)
     return None
 
 
@@ -553,7 +554,7 @@ def applyDIP(
         n = int(instruction["args"][0]["int"])
         instruction["args"].pop(0)
         instruction["args"] = flatten(instruction["args"][0])
-    if n + 1 > len(stack):
+    if n > len(stack):
         raise CustomException(
             "not enough elements in stack",
             {"instruction": instruction, "parameters": parameters},
@@ -576,7 +577,7 @@ def applyDIP(
 def applyDROP(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
-    n = int(instruction["args"][0].int) if "args" in instruction else 1
+    n = int(instruction["args"][0]["int"]) if "args" in instruction else 1
     if n > len(stack):
         raise CustomException(
             "not enough elements in the stack",
@@ -591,7 +592,7 @@ def applyDROP(
 def applyDUG(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
-    n = int(instruction["args"][0].int)
+    n = int(instruction["args"][0]["int"])
     if n == 0:
         return None
     if n >= len(stack):
@@ -607,7 +608,7 @@ def applyDUG(
 def applyDUP(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
-    n = int(instruction["args"][0].int) if "args" in instruction else 1
+    n = int(instruction["args"][0]["int"]) if "args" in instruction else 1
     if n == 0:
         raise CustomException(
             "non-allowed value for " + instruction["prim"] + ": " + instruction["args"],
@@ -618,10 +619,7 @@ def applyDUP(
             "not enough elements in the stack",
             {"instruction": instruction, "parameters": parameters},
         )
-    # Kind of a lame solution but works ¯\_(ツ)_/¯
-    _types.REGENERATE_NAME = not _variables.UNPAIR_FLAG
     output = deepcopy(stack[len(stack) - n])
-    _types.REGENERATE_NAME = False
     return output
 
 
@@ -800,6 +798,7 @@ def applyIF(
 def applyIF_CONS(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
+    CPC = _variables.CURRENT_PATH_CONSTRAINT
     if len(parameters[0].value[0]) > 0:
         d = parameters[0].value[0].pop(0)
         stack.append(parameters[0])
@@ -807,6 +806,14 @@ def applyIF_CONS(
         branch = 0
     else:
         branch = 1
+    if parameters[0].name in CPC.input_variables:
+        _variables.PATH_CONSTRAINTS.append(deepcopy(CPC))
+        CPC.predicates.append(
+            f"{_types.SYMBOLIC_VARIABLES[parameters[0].name]} {'>' if branch == 0 else '=='} 0"
+        )
+        _variables.PATH_CONSTRAINTS[-1].predicates.append(
+            f"{_types.SYMBOLIC_VARIABLES[parameters[0].name]} {'==' if branch == 0 else '>'} 0"
+        )
     for i in flatten(instruction["args"][branch]):
         if isinstance(i, list):
             process_ifmacro(i)
@@ -1121,7 +1128,7 @@ def applyNOW(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
-    return Data("timestamp", [str(int(time() * 1000))])
+    return Data("timestamp", [str(_variables.CURRENT_STATE.timestamp)], None, "sv_now")
 
 
 def applyOR(
@@ -1182,10 +1189,10 @@ def applyPUSH(
                 v0 = Data(
                     getattr(output, "listType")["prim"],
                     [
-                        instruction["args"][i]["int"]
-                        or instruction["args"][i]["string"]
-                        or instruction["args"][i]["bytes"]
-                        or instruction["args"][i]["prim"]
+                        instruction["args"][i].get("int")
+                        or instruction["args"][i].get("string")
+                        or instruction["args"][i].get("bytes")
+                        or instruction["args"][i].get("prim")
                     ],
                     output.name,
                 )
@@ -1197,10 +1204,10 @@ def applyPUSH(
                 v1 = Data(
                     getattr(output, "optionType")[0]["prim"],
                     [
-                        instruction["args"][1]["args"][0]["int"]
-                        or instruction["args"][1]["args"][0]["string"]
-                        or instruction["args"][1]["args"][0]["bytes"]
-                        or instruction["args"][1]["args"][0]["prim"]
+                        instruction["args"][1]["args"][0].get("int")
+                        or instruction["args"][1]["args"][0].get("string")
+                        or instruction["args"][1]["args"][0].get("bytes")
+                        or instruction["args"][1]["args"][0].get("prim")
                     ],
                     output.name,
                 )
@@ -1213,20 +1220,20 @@ def applyPUSH(
                 if getattr(output, "orValue") == "Left"
                 else getattr(output, "orType")[1]["prim"],
                 [
-                    instruction["args"][1]["args"][0]["int"]
-                    or instruction["args"][1]["args"][0]["string"]
-                    or instruction["args"][1]["args"][0]["bytes"]
-                    or instruction["args"][1]["args"][0]["prim"]
+                    instruction["args"][1]["args"][0].get("int")
+                    or instruction["args"][1]["args"][0].get("string")
+                    or instruction["args"][1]["args"][0].get("bytes")
+                    or instruction["args"][1]["args"][0].get("prim")
                 ],
                 output.name,
             )
             output.value.append(v2)
         case _:
             value = (
-                instruction["args"][1].get("int", None)
-                or instruction["args"][1].get("string", None)
-                or instruction["args"][1].get("bytes", None)
-                or instruction["args"][1].get("prim", None)
+                instruction["args"][1].get("int")
+                or instruction["args"][1].get("string")
+                or instruction["args"][1].get("bytes")
+                or instruction["args"][1].get("prim")
             )
             output.value.append(value)
     return output
@@ -1248,7 +1255,7 @@ def applySELF(
     stack: Deque[Data],
 ) -> Data:
     # Not implemented completely
-    output = Data("contract", [])
+    output = Data("contract", [], None, "sv_self")
     setattr(output, "contractType", "Unit")
     output.value.append(
         Data("address", [_variables.CURRENT_STATE.address], output.name)
@@ -1262,7 +1269,7 @@ def applySENDER(
     stack: Deque[Data],
 ) -> Data:
     # Not implemented completely/correctly
-    return Data("address", [_variables.CURRENT_STATE.address])
+    return Data("address", [_variables.CURRENT_STATE.address], None, "sv_sender")
 
 
 def applySET_DELEGATE(
@@ -1336,7 +1343,7 @@ def applySOURCE(
     stack: Deque[Data],
 ) -> Data:
     # Not implemented completely
-    return Data("address", [_variables.CURRENT_STATE.address])
+    return Data("address", [_variables.CURRENT_STATE.address], None, "sv_source")
 
 
 def applySUB(
@@ -1766,6 +1773,14 @@ def dequemove(l: Deque, from_index: int, to_index: int) -> None:
         l.insert(end_index, popmultiple(l, from_index))
 
 
+def find_nested(d: Data) -> List[str]:
+    o = []
+    for i in d.value:
+        if isinstance(i, Data):
+            o.extend([i.name] + find_nested(i))
+    return o
+
+
 def flatten(l: List, skip_ifs: bool = True) -> List:
     o = []
     for i in l:
@@ -1793,11 +1808,17 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
     # TODO: definitely the most inefficient-looking part of the codebase
     CPC = _variables.CURRENT_PATH_CONSTRAINT
     op = _variables.OPS[l[1 if l[0]["prim"] == "COMPARE" else 0]["prim"]]
-    CPC.initial_variables.append(_types.SYMBOLIC_VARIABLES[_variables.STACK[-1].name])
+    checked_variables = [
+        _types.SYMBOLIC_VARIABLES[_variables.STACK[-1].name]
+        if _variables.STACK[-1].name in CPC.input_variables
+        else _variables.STACK[-1].value[0]
+    ]
     # Some preprocessing
     if l[0]["prim"] == "COMPARE":
-        CPC.initial_variables.append(
+        checked_variables.append(
             _types.SYMBOLIC_VARIABLES[_variables.STACK[-2].name]
+            if _variables.STACK[-2].name in CPC.input_variables
+            else _variables.STACK[-2].value[0]
         )
         # Execute COMPARE here
         ins_c = l.pop(0)
@@ -1805,12 +1826,8 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
         if step is not None:
             _variables.STEPS.append(step)
     else:  # EQ, GE, etc...
-        CPC.initial_variables.append("0")
-    CPC.predicates.append(
-        f"{CPC.initial_variables[-2]} {op} {CPC.initial_variables[-1]}"
-    )
-    if CPC.initial_variables[-1] == "0":
-        _ = CPC.initial_variables.pop()
+        checked_variables.append("0")
+    CPC.predicates.append(f"{checked_variables[-2]} {op} {checked_variables[-1]}")
     ins_op, ins_if = l[0], l[1]
     # Execute EQ, GE, etc. here
     step = process_instruction(ins_op, _variables.STACK)

@@ -1,6 +1,8 @@
 #!/usr/bin/python3
+from collections import deque
 import copy
 import dataclasses
+import datetime
 import json
 import re
 import subprocess
@@ -8,6 +10,7 @@ import sys
 
 import click
 
+import _functions
 import _types
 import _variables
 from _functions import (
@@ -59,6 +62,9 @@ sys.excepthook = excepthook
     "--amount", default=0, show_default=True, help="Amount as an int", type=int
 )
 @click.option(
+    "--balance", default=0, show_default=True, help="Balance as an int", type=int
+)
+@click.option(
     "--entrypoint",
     default="default",
     show_default=True,
@@ -73,7 +79,7 @@ sys.excepthook = excepthook
 )
 @click.option(
     "--timestamp",
-    default=0,
+    default=int(datetime.datetime.now().timestamp()),
     show_default=True,
     help="Timestamp, an int as an Unix time",
     type=int,
@@ -85,6 +91,7 @@ def michelson_interpreter(
     account: str,
     address: str,
     amount: int,
+    balance: int,
     entrypoint: str,
     gas_limit: int,
     _id: int,
@@ -92,7 +99,7 @@ def michelson_interpreter(
     script: click.Path,
 ):
     _variables.CURRENT_STATE = _types.State(
-        account, address, amount, entrypoint, gas_limit, _id, timestamp
+        account, address, amount, balance, entrypoint, gas_limit, _id, timestamp
     )
     _variables.CURRENT_PATH_CONSTRAINT = _types.PathConstraint()
     _variables.PATH_CONSTRAINTS.append(_variables.CURRENT_PATH_CONSTRAINT)
@@ -121,8 +128,18 @@ def michelson_interpreter(
             parameter_type["args"][0], parameter, storage_type["args"][0], storage
         )
     )
-    _variables.CURRENT_PATH_CONSTRAINT.input_variables.append(
-        copy.deepcopy(_variables.STACK[-1])
+    _variables.CURRENT_PATH_CONSTRAINT.input_variables.update(
+        [_variables.STACK[-1].name]
+        + _functions.find_nested(_variables.STACK[-1])
+        + [
+            _functions.applyAMOUNT({}, None, deque()).name,
+            _functions.applyBALANCE({}, None, deque()).name,
+            _functions.applyCHAIN_ID({}, None, deque()).name,
+            _functions.applyNOW({}, None, deque()).name,
+            _functions.applySELF({}, None, deque()).name,
+            _functions.applySENDER({}, None, deque()).name,
+            _functions.applySOURCE({}, None, deque()).name,
+        ]
     )
     _variables.STATES.append(copy.deepcopy(_variables.CURRENT_STATE))
     _variables.STEPS.append(
@@ -148,8 +165,18 @@ def michelson_interpreter(
         _variables.CURRENT_PATH_CONSTRAINT.is_satisfiable
     ) = True
 
-    print(json.dumps([dataclasses.asdict(x) for x in _variables.STEPS]))
-    print(json.dumps([dataclasses.asdict(x) for x in _variables.PATH_CONSTRAINTS]))
+    print(
+        json.dumps(
+            [dataclasses.asdict(x) for x in _variables.STEPS],
+            default=lambda x: list(x) if isinstance(x, set) else x,
+        )
+    )
+    print(
+        json.dumps(
+            [dataclasses.asdict(x) for x in _variables.PATH_CONSTRAINTS],
+            default=lambda x: list(x) if isinstance(x, set) else x,
+        )
+    )
 
 
 if __name__ == "__main__":
