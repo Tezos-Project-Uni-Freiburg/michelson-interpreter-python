@@ -1,5 +1,4 @@
 #!/usr/bin/python3
-from collections import deque
 import copy
 import dataclasses
 import datetime
@@ -7,8 +6,10 @@ import json
 import re
 import subprocess
 import sys
+from collections import deque
 
 import click
+import z3
 
 import _functions
 import _types
@@ -16,8 +17,8 @@ import _variables
 from _functions import (
     initialize,
     process_ifmacro,
-    process_unpairmacro,
     process_instruction,
+    process_unpairmacro,
 )
 
 
@@ -128,18 +129,26 @@ def michelson_interpreter(
             parameter_type["args"][0], parameter, storage_type["args"][0], storage
         )
     )
-    _variables.CURRENT_PATH_CONSTRAINT.input_variables.update(
-        [_variables.STACK[-1].name]
-        + _functions.find_nested(_variables.STACK[-1])
-        + [
-            _functions.applyAMOUNT({}, None, deque()).name,
-            _functions.applyBALANCE({}, None, deque()).name,
-            _functions.applyCHAIN_ID({}, None, deque()).name,
-            _functions.applyNOW({}, None, deque()).name,
-            _functions.applySELF({}, None, deque()).name,
-            _functions.applySENDER({}, None, deque()).name,
-            _functions.applySOURCE({}, None, deque()).name,
-        ]
+    CPC = _variables.CURRENT_PATH_CONSTRAINT
+    CPC.input_variables = {
+        _variables.STACK[-1].name: _types.SYMBOLIC_VARIABLES.get(
+            _variables.STACK[-1].name, z3.Bool(_variables.STACK[-1].name)
+        )
+    }
+    CPC.input_variables.update(
+        {
+            x: _types.SYMBOLIC_VARIABLES.get(x, z3.Bool(x))
+            for x in _functions.find_nested(_variables.STACK[-1])
+            + [
+                _functions.applyAMOUNT({}, None, deque()).name,
+                _functions.applyBALANCE({}, None, deque()).name,
+                _functions.applyCHAIN_ID({}, None, deque()).name,
+                _functions.applyNOW({}, None, deque()).name,
+                _functions.applySELF({}, None, deque()).name,
+                _functions.applySENDER({}, None, deque()).name,
+                _functions.applySOURCE({}, None, deque()).name,
+            ]
+        }
     )
     _variables.STATES.append(copy.deepcopy(_variables.CURRENT_STATE))
     _variables.STEPS.append(
@@ -174,7 +183,7 @@ def michelson_interpreter(
     print(
         json.dumps(
             [dataclasses.asdict(x) for x in _variables.PATH_CONSTRAINTS],
-            default=lambda x: list(x) if isinstance(x, set) else x,
+            default=lambda x: str(x) if isinstance(x, z3.Z3PPObject) else x,
         )
     )
 

@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import ast
 import json
+import operator
 import re
 from collections import deque
 from copy import deepcopy
@@ -8,9 +9,9 @@ from datetime import datetime
 from functools import reduce
 from hashlib import blake2b, sha256, sha512
 from math import trunc
-from time import time
 from typing import Any, Deque, Dict, List
 
+import z3
 from base58 import b58encode_check
 
 import _types
@@ -564,7 +565,10 @@ def applyDIP(
         p.insert(0, stack.pop())
     for i in flatten(instruction["args"]):
         if isinstance(i, list):
-            process_ifmacro(i)
+            if i[-1]["prim"] == "IF":
+                process_ifmacro(i)
+            else:
+                process_unpairmacro(i)
         else:
             step = process_instruction(i, stack)
             if "IF" not in i["prim"]:
@@ -787,7 +791,10 @@ def applyIF(
     branch = 0 if parameters[0].value[0].lower() == "true" else 1
     for i in flatten(instruction["args"][branch]):
         if isinstance(i, list):
-            process_ifmacro(i)
+            if i[-1]["prim"] == "IF":
+                process_ifmacro(i)
+            else:
+                process_unpairmacro(i)
         else:
             step = process_instruction(i, stack)
             if "IF" not in i["prim"]:
@@ -806,17 +813,26 @@ def applyIF_CONS(
         branch = 0
     else:
         branch = 1
+
     if parameters[0].name in CPC.input_variables:
         _variables.PATH_CONSTRAINTS.append(deepcopy(CPC))
         CPC.predicates.append(
-            f"{_types.SYMBOLIC_VARIABLES[parameters[0].name]} {'>' if branch == 0 else '=='} 0"
+            operator.gt(_types.SYMBOLIC_VARIABLES[parameters[0].name], 0)  # type: ignore
+            if branch == 0
+            else operator.eq(_types.SYMBOLIC_VARIABLES[parameters[0].name], 0)
         )
         _variables.PATH_CONSTRAINTS[-1].predicates.append(
-            f"{_types.SYMBOLIC_VARIABLES[parameters[0].name]} {'==' if branch == 0 else '>'} 0"
+            operator.eq(_types.SYMBOLIC_VARIABLES[parameters[0].name], 0)
+            if branch == 0
+            else operator.gt(_types.SYMBOLIC_VARIABLES[parameters[0].name], 0)  # type: ignore
         )
+
     for i in flatten(instruction["args"][branch]):
         if isinstance(i, list):
-            process_ifmacro(i)
+            if i[-1]["prim"] == "IF":
+                process_ifmacro(i)
+            else:
+                process_unpairmacro(i)
         else:
             step = process_instruction(i, stack)
             if "IF" not in i["prim"]:
@@ -827,11 +843,29 @@ def applyIF_CONS(
 def applyIF_LEFT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
-    stack.append(parameters[0].value[0])
+    CPC = _variables.CURRENT_PATH_CONSTRAINT
     branch = 0 if getattr(parameters[0], "orValue") == "Left" else 1
+
+    if parameters[0].name in CPC.input_variables:
+        _variables.PATH_CONSTRAINTS.append(deepcopy(CPC))
+        CPC.predicates.append(
+            _types.SYMBOLIC_VARIABLES[parameters[0].name]
+            if branch == 0
+            else z3.Not(_types.SYMBOLIC_VARIABLES[parameters[0].name])
+        )
+        _variables.PATH_CONSTRAINTS[-1].predicates.append(
+            z3.Not(_types.SYMBOLIC_VARIABLES[parameters[0].name])
+            if branch == 0
+            else _types.SYMBOLIC_VARIABLES[parameters[0].name]
+        )
+
+    stack.append(parameters[0].value[0])
     for i in flatten(instruction["args"][branch]):
         if isinstance(i, list):
-            process_ifmacro(i)
+            if i[-1]["prim"] == "IF":
+                process_ifmacro(i)
+            else:
+                process_unpairmacro(i)
         else:
             step = process_instruction(i, stack)
             if "IF" not in i["prim"]:
@@ -842,14 +876,32 @@ def applyIF_LEFT(
 def applyIF_NONE(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
+    CPC = _variables.CURRENT_PATH_CONSTRAINT
     if getattr(parameters[0], "optionValue") == "None":
         branch = 0
     else:
         branch = 1
         stack.append(parameters[0].value[0])
+
+    if parameters[0].name in CPC.input_variables:
+        _variables.PATH_CONSTRAINTS.append(deepcopy(CPC))
+        CPC.predicates.append(
+            z3.Not(_types.SYMBOLIC_VARIABLES[parameters[0].name])
+            if branch == 0
+            else _types.SYMBOLIC_VARIABLES[parameters[0].name]
+        )
+        _variables.PATH_CONSTRAINTS[-1].predicates.append(
+            _types.SYMBOLIC_VARIABLES[parameters[0].name]
+            if branch == 0
+            else z3.Not(_types.SYMBOLIC_VARIABLES[parameters[0].name])
+        )
+
     for i in flatten(instruction["args"][branch]):
         if isinstance(i, list):
-            process_ifmacro(i)
+            if i[-1]["prim"] == "IF":
+                process_ifmacro(i)
+            else:
+                process_unpairmacro(i)
         else:
             step = process_instruction(i, stack)
             if "IF" not in i["prim"]:
@@ -937,7 +989,10 @@ def applyLOOP(
     while v:
         for i in flatten(instruction["args"]):
             if isinstance(i, list):
-                process_ifmacro(i)
+                if i[-1]["prim"] == "IF":
+                    process_ifmacro(i)
+                else:
+                    process_unpairmacro(i)
             else:
                 step = process_instruction(i, stack)
                 if "IF" not in i["prim"]:
@@ -971,7 +1026,10 @@ def applyLOOP_LEFT(
     while v:
         for i in flatten(instruction["args"]):
             if isinstance(i, list):
-                process_ifmacro(i)
+                if i[-1]["prim"] == "IF":
+                    process_ifmacro(i)
+                else:
+                    process_unpairmacro(i)
             else:
                 step = process_instruction(i, stack)
                 if "IF" not in i["prim"]:
@@ -1827,7 +1885,7 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
             _variables.STEPS.append(step)
     else:  # EQ, GE, etc...
         checked_variables.append("0")
-    CPC.predicates.append(f"{checked_variables[-2]} {op} {checked_variables[-1]}")
+    CPC.predicates.append(op(checked_variables[-2], checked_variables[-1]))
     ins_op, ins_if = l[0], l[1]
     # Execute EQ, GE, etc. here
     step = process_instruction(ins_op, _variables.STACK)
@@ -1837,16 +1895,11 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
     # negating & forking the current path constraint
     _variables.PATH_CONSTRAINTS.append(deepcopy(CPC))
     if _variables.STACK[-1].value[0].lower() == "true":
-        # _variables.PATH_CONSTRAINTS[-1].predicates = [
-        #     "!",
-        #     _variables.PATH_CONSTRAINTS[-1].predicates,
-        # ]
-        _variables.PATH_CONSTRAINTS[-1].predicates.insert(
-            len(_variables.PATH_CONSTRAINTS[-1].predicates) - 1, "!"
+        _variables.PATH_CONSTRAINTS[-1].predicates.append(
+            z3.Not(_variables.PATH_CONSTRAINTS[-1].predicates.pop())
         )
     else:
-        # CPC.predicates = ["!", CPC.predicates]
-        CPC.predicates.insert(len(CPC.predicates) - 1, "!")
+        CPC.predicates.append(z3.Not(CPC.predicates.pop()))
     # Now processing the actual IF
     _ = process_instruction(ins_if, _variables.STACK)
 

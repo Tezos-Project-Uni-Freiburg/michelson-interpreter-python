@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import operator
 from collections import deque
 from typing import Deque, List
 
@@ -15,10 +16,10 @@ UNPAIR_FLAG: bool = False
 
 # Constants
 OPS = {
-    "EQ": "==",
-    "GE": ">=",
-    "GT": ">",
-    "LE": "<=",
-    "LT": "<",
-    "NEQ": "!=",
+    "EQ": operator.eq,
+    "GE": operator.ge,
+    "GT": operator.gt,
+    "LE": operator.le,
+    "LT": operator.lt,
+    "NEQ": operator.ne,
 }

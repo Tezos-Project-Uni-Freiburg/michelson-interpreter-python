@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Set
 
+import z3
+
 
 class CustomException(Exception):
     message: str
@@ -59,9 +61,9 @@ class Data:
         if len(self.value) == 1 and self.value[0] is None:
             self.value[0] = ""
         if self.name == "":
-            self.name = create_variable(self.prim)
+            self.name = create_variable_name(self.prim)
         CONCRETE_VARIABLES[self.name] = self
-        SYMBOLIC_VARIABLES[self.name] = self.name + "_s"
+        create_symbolic_variable(self)
 
 
 @dataclass
@@ -97,7 +99,7 @@ class Step:
 
 @dataclass
 class PathConstraint:
-    input_variables: Set[str] = field(default_factory=set)
+    input_variables: Dict[str, z3.ExprRef] = field(default_factory=dict)
     predicates: List[Any] = field(default_factory=list)
     is_processed: bool = False
     is_satisfiable: bool = False
@@ -105,10 +107,10 @@ class PathConstraint:
 
 VARIABLE_NAMES: Dict[str, Set[int]] = {}
 CONCRETE_VARIABLES: Dict[str, Data] = {}
-SYMBOLIC_VARIABLES: Dict[str, Any] = {}
+SYMBOLIC_VARIABLES: Dict[str, z3.ExprRef] = {}
 
 
-def create_variable(name: str) -> str:
+def create_variable_name(name: str) -> str:
     n = 0
     if VARIABLE_NAMES.get(name):
         n = max(VARIABLE_NAMES[name]) + 1
@@ -116,3 +118,23 @@ def create_variable(name: str) -> str:
     else:
         VARIABLE_NAMES[name] = {n}
     return name + "_" + str(n)
+
+
+def create_symbolic_variable(d: Data) -> None:
+    match d.prim:
+        case "int" | "mutez" | "nat" | "list":
+            SYMBOLIC_VARIABLES[d.name] = z3.Int(d.name)
+        case (
+            "address"
+            | "bytes"
+            | "chain_id"
+            | "key"
+            | "key_hash"
+            | "signature"
+            | "string"
+        ):
+            SYMBOLIC_VARIABLES[d.name] = z3.String(d.name)
+        case "bool" | "or" | "option" | "pair":
+            SYMBOLIC_VARIABLES[d.name] = z3.Bool(d.name)
+        case _:
+            pass
