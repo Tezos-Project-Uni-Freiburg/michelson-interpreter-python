@@ -102,7 +102,7 @@ def michelson_interpreter(
     _variables.CURRENT_STATE = _types.State(
         account, address, amount, balance, entrypoint, gas_limit, _id, timestamp
     )
-    _variables.CURRENT_PATH_CONSTRAINT = _types.PathConstraint()
+    CPC = _variables.CURRENT_PATH_CONSTRAINT = _types.PathConstraint()
     _variables.PATH_CONSTRAINTS.append(_variables.CURRENT_PATH_CONSTRAINT)
 
     with open(str(script), encoding="utf-8") as f:
@@ -119,8 +119,6 @@ def michelson_interpreter(
     parameter_type, storage_type, code = (
         s[0],
         s[1],
-        # TODO: outer `flatten` seems to be just to make sure, could find a better way for this
-        # Removed two levels of flattens here
         s[2]["args"],
     )
 
@@ -129,12 +127,13 @@ def michelson_interpreter(
             parameter_type["args"][0], parameter, storage_type["args"][0], storage
         )
     )
-    CPC = _variables.CURRENT_PATH_CONSTRAINT
+    # Adding the initial `pair` as a bool here
     CPC.input_variables = {
         _variables.STACK[-1].name: _types.SYMBOLIC_VARIABLES.get(
             _variables.STACK[-1].name, z3.Bool(_variables.STACK[-1].name)
         )
     }
+    # Adding whatever's inside that `pair` + state variables
     CPC.input_variables.update(
         {
             x: _types.SYMBOLIC_VARIABLES.get(x, z3.Bool(x))

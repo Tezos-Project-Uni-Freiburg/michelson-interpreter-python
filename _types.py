@@ -23,6 +23,16 @@ class Data:
     parent: str | None = None
     name: str = ""
     attributes: List[str] = field(default_factory=list, init=False)
+    # Datatype dependent optional attributes
+    option_value: str = field(default_factory=str, init=False)
+    option_type: List[str] = field(default_factory=list, init=False)
+    contract_type: str = field(default_factory=str, init=False)
+    key_type: str = field(default_factory=str, init=False)
+    value_type: str = field(default_factory=str, init=False)
+    set_type: str = field(default_factory=str, init=False)
+    or_value: str = field(default_factory=str, init=False)
+    or_type: List[str] = field(default_factory=list, init=False)
+    list_type: str = field(default_factory=str, init=False)
 
     def __post_init__(self) -> None:
         match self.prim:

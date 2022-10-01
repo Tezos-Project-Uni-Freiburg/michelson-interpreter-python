@@ -22,15 +22,15 @@ from _types import CustomException, Data, Delta, Step
 def initialize(
     parameter_type: Dict[str, Any], parameter: str, storage_type: dict, storage: str
 ) -> Data:
-    output = Data("pair", [])
+    output = Data("pair")
     parameter_result: Data = globals()["parse" + parameter_type["prim"].upper()](
         parameter_type.get("args", []), parameter
     )
-    setattr(parameter_result, "parent", output.name)
+    parameter_result.parent = output.name
     storage_result: Data = globals()["parse" + storage_type["prim"].upper()](
         storage_type.get("args", []), storage
     )
-    setattr(storage_result, "parent", output.name)
+    storage_result.parent = output.name
     output.value.extend([parameter_result, storage_result])
     return output
 
@@ -397,7 +397,7 @@ def applyAPPLY(
     stack: Deque[Data],
 ) -> Data:
     # Not implemented
-    return Data("lambda", [])
+    return Data("lambda")
 
 
 def applyBALANCE(
@@ -449,7 +449,7 @@ def applyCOMPARE(
             "can't compare non-Comparable types",
             {"instruction": instruction, "parameters": parameters},
         )
-    output = Data("int", [])
+    output = Data("int")
     match parameters[0].prim:
         case "nat" | "int" | "mutez" | "timestamp":
             z1 = int(parameters[0].value[0])
@@ -494,15 +494,13 @@ def applyCONCAT(
         for i in parameters[0].value[0]:
             value += i.value[0]
         return Data(
-            "string"
-            if getattr(parameters[0], "listType").get("prim", None) == "string"
-            else "bytes",
+            "string" if parameters[0].list_type == "string" else "bytes",
             [value],
         )
 
 
 def applyCONS(instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]):
-    if parameters[0].prim != getattr(parameters[1], "listType").get("prim", None):
+    if parameters[0].prim != parameters[1].list_type:
         raise CustomException(
             "list type and element type are not same",
             {"instruction": instruction, "parameters": parameters},
@@ -516,11 +514,11 @@ def applyCONTRACT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
     # Not implemented completely
-    output = Data("option", [])
-    setattr(output, "optionValue", "Some")
-    setattr(output, "optionType", ["contract"])
+    output = Data("option")
+    output.option_value = "Some"
+    output.option_type.append("contract")
     c = Data("contract", [parameters[0]], output.name)
-    setattr(c, "contractType", instruction["args"][0])
+    c.contract_type = instruction["args"][0].get("prim")
     output.value.append(c)
     return output
 
@@ -531,7 +529,7 @@ def applyCREATE_CONTRACT(
     stack: Deque[Data],
 ) -> List[Data]:
     # Not implemented
-    return [Data("operation", []), Data("address", [])]
+    return [Data("operation"), Data("address")]
 
 
 def applyDIG(
@@ -630,16 +628,16 @@ def applyDUP(
 def applyEDIV(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
-    output = Data("option", [])
-    setattr(output, "optionType", ["pair"])
+    output = Data("option")
+    output.option_type.append("pair")
     z1 = int(parameters[0].value[0])
     z2 = int(parameters[1].value[0])
 
     if z2 == 0:
-        setattr(output, "optionValue", "None")
+        output.option_value = "None"
         return output
     else:
-        setattr(output, "optionValue", "Some")
+        output.option_value = "Some"
 
     q = trunc(z1 / z2)
     r = z1 % z2
@@ -683,8 +681,8 @@ def applyEMPTY_BIG_MAP(
             {"instruction": instruction, "parameters": parameters},
         )
     output = Data("big_map", [dict()])
-    setattr(output, "keyType", instruction["args"][0])
-    setattr(output, "valueType", instruction["args"][1])
+    output.key_type = instruction["args"][0].get("prim")
+    output.value_type = instruction["args"][1].get("prim")
     return output
 
 
@@ -697,8 +695,8 @@ def applyEMPTY_MAP(
             {"instruction": instruction, "parameters": parameters},
         )
     output = Data("map", [dict()])
-    setattr(output, "keyType", instruction["args"][0])
-    setattr(output, "valueType", instruction["args"][1])
+    output.key_type = instruction["args"][0].get("prim")
+    output.value_type = instruction["args"][1].get("prim")
     return output
 
 
@@ -711,14 +709,14 @@ def applyEMPTY_SET(
             {"instruction": instruction, "parameters": parameters},
         )
     output = Data("set", [set()])
-    setattr(output, "setType", instruction["args"][0])
+    output.set_type = instruction["args"][0].get("prim")
     return output
 
 
 def applyEQ(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
-    result = Data("bool", [])
+    result = Data("bool")
     if int(parameters[0].value[0]) == 0:
         result.value.append("True")
     else:
@@ -732,7 +730,7 @@ def applyEXEC(
     stack: Deque[Data],
 ) -> Data:
     # Not implemented
-    return Data("unit", [])
+    return Data("unit", ["Unit"])
 
 
 def applyFAILWITH(
@@ -760,13 +758,13 @@ def applyGE(
 def applyGET(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
-    output = Data("option", [])
-    setattr(output, "optionType", [getattr(parameters[1], "keyType").prim])
+    output = Data("option")
+    output.option_type.append(parameters[1].key_type)
     if parameters[0].value[0] in parameters[1].value[0]:
-        setattr(output, "optionValue", "Some")
+        output.option_value = "Some"
         output.value.append(parameters[1].value[0].get(parameters[0].value[0]))
     else:
-        setattr(output, "optionValue", "None")
+        output.option_value = "None"
     return output
 
 
@@ -844,7 +842,7 @@ def applyIF_LEFT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
     CPC = _variables.CURRENT_PATH_CONSTRAINT
-    branch = 0 if getattr(parameters[0], "orValue") == "Left" else 1
+    branch = 0 if parameters[0].or_value == "Left" else 1
 
     if parameters[0].name in CPC.input_variables:
         _variables.PATH_CONSTRAINTS.append(deepcopy(CPC))
@@ -877,7 +875,7 @@ def applyIF_NONE(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
     CPC = _variables.CURRENT_PATH_CONSTRAINT
-    if getattr(parameters[0], "optionValue") == "None":
+    if parameters[0].option_value == "None":
         branch = 0
     else:
         branch = 1
@@ -913,7 +911,7 @@ def applyIMPLICIT_ACCOUNT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
     output = Data("contract", [parameters[0]])
-    setattr(output, "contractType", Data("unit", ["Unit"], output.name))
+    output.contract_type = "unit"
     return output
 
 
@@ -926,12 +924,12 @@ def applyINT(
 def applyISNAT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
-    output = Data("option", [])
-    setattr(output, "optionType", ["nat"])
+    output = Data("option")
+    output.option_type.append("nat")
     if int(parameters[0].value[0]) < 0:
-        setattr(output, "optionValue", "None")
+        output.option_value = "None"
     else:
-        setattr(output, "optionValue", "Some")
+        output.option_value = "Some"
         output.value.append(Data("nat", [parameters[0].value[0]], output.name))
     return output
 
@@ -957,7 +955,7 @@ def applyLAMBDA(
 def applyLE(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
-    result = Data("bool", [])
+    result = Data("bool")
     if int(parameters[0].value[0]) <= 0:
         result.value.append("True")
     else:
@@ -969,8 +967,8 @@ def applyLEFT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
     output = Data("or", [parameters[0]])
-    setattr(output, "orValue", "Left")
-    setattr(output, "orType", [parameters[0].prim, instruction["args"][0]["prim"]])
+    output.or_value = "Left"
+    output.or_type.extend([parameters[0].prim, instruction["args"][0].get("prim")])
     return output
 
 
@@ -1018,7 +1016,7 @@ def applyLOOP_LEFT(
             "top element of stack is not or",
             {"instruction": instruction, "parameters": parameters},
         )
-    elif getattr(top, "orValue") == "Right":
+    elif top.or_value == "Right":
         stack.append(top)
         return None
     else:
@@ -1041,7 +1039,7 @@ def applyLOOP_LEFT(
                 "top element of stack is not or",
                 {"instruction": instruction, "parameters": parameters},
             )
-        elif getattr(top, "orValue") == "Right":
+        elif top.or_value == "Right":
             stack.append(top)
             return None
         else:
@@ -1099,8 +1097,8 @@ def applyMEM(
 ) -> Data:
     if (
         parameters[1].prim in ["big_map", "map"]
-        and getattr(parameters[1], "keyType") != parameters[0].prim
-    ) or getattr(parameters[1], "setType") != parameters[0].prim:
+        and parameters[1].key_type != parameters[0].prim
+    ) or parameters[1].set_type != parameters[0].prim:
         raise CustomException(
             "key or element type does not match",
             {"instruction": instruction, "parameters": parameters},
@@ -1149,7 +1147,7 @@ def applyNIL(
             {"instruction": instruction, "parameters": parameters},
         )
     output = Data("list", [[]])
-    setattr(output, "listType", instruction["args"][0])
+    output.list_type = instruction["args"][0].get("prim")
     return output
 
 
@@ -1161,9 +1159,9 @@ def applyNONE(
             "type of option is not declared",
             {"instruction": instruction, "parameters": parameters},
         )
-    output = Data("option", [instruction["args"][0]["prim"]])
-    setattr(output, "optionValue", "None")
-    setattr(output, "optionType", instruction["args"])
+    output = Data("option", [instruction["args"][0].get("prim")])
+    output.option_value = "None"
+    output.option_type.extend([x.get("prim") for x in instruction["args"]])
     return output
 
 
@@ -1238,62 +1236,65 @@ def applyPUSH(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
-    output = Data(instruction["args"][0]["prim"], [])
+    dk = {"int", "string", "bytes", "prim"}
+    output = Data(instruction["args"][0]["prim"])
     match instruction["args"][0]["prim"]:
         case "list":
             output.value.append([])
-            setattr(output, "listType", instruction["args"][0]["args"][0])
+            output.list_type = instruction["args"][0]["args"][0].get("prim")
             for i in range(1, len(instruction["args"])):
-                v0 = Data(
-                    getattr(output, "listType")["prim"],
-                    [
-                        instruction["args"][i].get("int")
-                        or instruction["args"][i].get("string")
-                        or instruction["args"][i].get("bytes")
-                        or instruction["args"][i].get("prim")
-                    ],
-                    output.name,
+                output.value[0].append(
+                    Data(
+                        output.list_type,
+                        [
+                            instruction["args"][i].get(
+                                list(set(instruction["args"][i].keys()) & dk)[0]
+                            )
+                        ],
+                        output.name,
+                    )
                 )
-                output.value[0].append(v0)
         case "option":
-            setattr(output, "optionValue", instruction["args"][1]["prim"])
-            setattr(output, "optionType", [instruction["args"][0]["args"][0]])
-            if getattr(output, "optionValue") != "None":
-                v1 = Data(
-                    getattr(output, "optionType")[0]["prim"],
+            output.option_value = instruction["args"][1].get("prim")
+            output.option_type.append(instruction["args"][0]["args"][0].get("prim"))
+            if output.option_value != "None":
+                output.value.append(
+                    Data(
+                        output.option_type[0],
+                        [
+                            instruction["args"][1]["args"][0].get(
+                                list(
+                                    set(instruction["args"][1]["args"][0].keys()) & dk
+                                )[0]
+                            )
+                        ],
+                        output.name,
+                    )
+                )
+        case "or":
+            output.or_value = instruction["args"][1].get("prim")
+            output.or_type = [x.get("prim") for x in instruction["args"][0].get("args")]
+            output.value.append(
+                Data(
+                    output.or_type[0]
+                    if output.or_value == "Left"
+                    else output.or_type[1],
                     [
-                        instruction["args"][1]["args"][0].get("int")
-                        or instruction["args"][1]["args"][0].get("string")
-                        or instruction["args"][1]["args"][0].get("bytes")
-                        or instruction["args"][1]["args"][0].get("prim")
+                        instruction["args"][1]["args"][0].get(
+                            list(set(instruction["args"][1]["args"][0].keys()) & dk)[0]
+                        )
                     ],
                     output.name,
                 )
-                output.value.append(v1)
-        case "or":
-            setattr(output, "orValue", instruction["args"][1]["prim"])
-            setattr(output, "orType", instruction["args"][0]["args"])
-            v2 = Data(
-                getattr(output, "orType")[0]["prim"]
-                if getattr(output, "orValue") == "Left"
-                else getattr(output, "orType")[1]["prim"],
-                [
-                    instruction["args"][1]["args"][0].get("int")
-                    or instruction["args"][1]["args"][0].get("string")
-                    or instruction["args"][1]["args"][0].get("bytes")
-                    or instruction["args"][1]["args"][0].get("prim")
-                ],
-                output.name,
             )
-            output.value.append(v2)
         case _:
-            value = (
-                instruction["args"][1].get("int")
-                or instruction["args"][1].get("string")
-                or instruction["args"][1].get("bytes")
-                or instruction["args"][1].get("prim")
+            output.value.append(
+                [
+                    instruction["args"][1].get(
+                        list(set(instruction["args"][1].keys()) & dk)[0]
+                    )
+                ][0]
             )
-            output.value.append(value)
     return output
 
 
@@ -1302,8 +1303,8 @@ def applyRIGHT(
 ) -> Data:
     output = Data("or", [parameters[0]])
     parameters[0].parent = output.name
-    setattr(output, "orValue", "Right")
-    setattr(output, "orType", [instruction["args"][0]["prim"], parameters[0].prim])
+    output.or_value = "Right"
+    output.or_type.extend([instruction["args"][0].get("prim"), parameters[0].prim])
     return output
 
 
@@ -1314,7 +1315,7 @@ def applySELF(
 ) -> Data:
     # Not implemented completely
     output = Data("contract", [], None, "sv_self")
-    setattr(output, "contractType", "Unit")
+    output.contract_type = "unit"
     output.value.append(
         Data("address", [_variables.CURRENT_STATE.address], output.name)
     )
@@ -1336,7 +1337,7 @@ def applySET_DELEGATE(
     stack: Deque[Data],
 ) -> Data:
     # Not implemented
-    return Data("operation", [])
+    return Data("operation")
 
 
 def applySHA256(
@@ -1364,11 +1365,11 @@ def applySLICE(
     _len = int(parameters[1].value[0])
     _str = parameters[2].value[0]
     output = Data("option", [])
-    setattr(output, "optionType", [parameters[2].prim])
+    output.option_type.append(parameters[2].prim)
     if len(_str) == 0 or offset >= len(_str) or offset + _len > len(_str):
-        setattr(output, "optionValue", "None")
+        output.option_value = "None"
     elif offset < len(_str) and offset + _len <= len(_str):
-        setattr(output, "optionValue", "Some")
+        output.option_value = "Some"
         output.value.append(
             Data(parameters[2].prim, [_str[slice(offset, offset + _len)]], output.name)
         )
@@ -1390,8 +1391,8 @@ def applySOME(
         )
     output = Data("option", [parameters[0]])
     parameters[0].parent = output.name
-    setattr(output, "optionValue", "Some")
-    setattr(output, "optionType", [instruction["args"][0]["prim"]])
+    output.option_value = "Some"
+    output.option_type.append(instruction["args"][0].get("prim"))
     return output
 
 
@@ -1443,7 +1444,7 @@ def applyTRANSFER_TOKENS(
     stack: Deque[Data],
 ) -> Data:
     # Not implemented
-    return Data("operation", [])
+    return Data("operation")
 
 
 def applyUNIT(
@@ -1461,9 +1462,9 @@ def applyUNPACK(
     v = ast.literal_eval(
         json.dumps(bytes.fromhex(parameters[0].value[0]).decode("utf-8"))
     )
-    output = Data("option", [])
+    output = Data("option")
     i = Data(instruction["args"][0]["prim"], [], output.name)
-    # Don't know why this check is here
+    # TODO: Don't know why this check is here
     if "args" in instruction["args"][0] and all(
         y == v[x].prim
         for x, y in enumerate(map(lambda x: x.prim, instruction["args"][0]["args"]))
@@ -1472,8 +1473,8 @@ def applyUNPACK(
     else:
         i.value = v
     # Not implemented
-    setattr(output, "optionValue", "Some")
-    setattr(output, "optionType", [instruction["args"][0]["prim"]])
+    output.option_value = "Some"
+    output.option_type.append(instruction["args"][0].get("prim"))
     output.value.append(i)
     return output
 
@@ -1483,7 +1484,7 @@ def applyUPDATE(
 ):
     # TODO: missing Data parent update
     if parameters[1].prim == "bool":
-        if parameters[0].prim != getattr(parameters[2], "setType"):
+        if parameters[0].prim != parameters[2].set_type:
             raise CustomException(
                 "set type does not match",
                 {"instruction": instruction, "parameters": parameters},
@@ -1493,15 +1494,13 @@ def applyUPDATE(
         else:
             parameters[2].value[0].remove(parameters[2].value)
     else:
-        if parameters[0].prim != getattr(parameters[2], "keyType"):
+        if parameters[0].prim != parameters[2].key_type:
             raise CustomException(
                 "key type does not match",
                 {"instruction": instruction, "parameters": parameters},
             )
-        if getattr(parameters[1], "optionValue") == "Some":
-            if getattr(parameters[1], "optionType")[0] != getattr(
-                parameters[2], "valueType"
-            ):
+        if parameters[1].option_value == "Some":
+            if parameters[1].option_type[0] != parameters[2].value_type:
                 raise CustomException(
                     "value type does not match",
                     {"instruction": instruction, "parameters": parameters},
@@ -1545,8 +1544,8 @@ def parseADDRESS(args, value) -> Data:
 
 def parseBIG_MAP(args, value) -> Data:
     output = Data("big_map", [dict()])
-    setattr(output, "keyType", args[0])
-    setattr(output, "valueType", args[1])
+    output.key_type = args[0].get("prim")
+    output.value_type = args[1].get("prim")
 
     params = re.match(
         r"\s*\{\s*((?:Elt\s+.+\s+.+\s*;\s*)+(?:Elt\s+.+\s+.+\s*)?)\}\s*", value
@@ -1567,7 +1566,7 @@ def parseBIG_MAP(args, value) -> Data:
                 {"args": args, "value": value},
             )
         # r[1] is the key, and r[2] is the value
-        match getattr(output, "keyType")["prim"]:
+        match output.key_type:
             case (
                 "int" | "mutez" | "nat" | "timestamp" | "bytes" | "signature" | "bool"
             ):
@@ -1582,9 +1581,9 @@ def parseBIG_MAP(args, value) -> Data:
                     )
             case _:
                 raise CustomException("not implemented", {"args": args, "value": value})
-        output.value[0][r[1]] = globals()[
-            "parse" + getattr(output, "valueType")["prim"].upper()
-        ](args[1]["args"], r[2])
+        output.value[0][r[1]] = globals()["parse" + output.value_type.upper()](
+            args[1], r[2]
+        )
     return output
 
 
@@ -1613,7 +1612,7 @@ def parseKEY_HASH(args, value) -> Data:
 
 def parseLIST(args, value) -> Data:
     output = Data("list", [[]])
-    setattr(output, "listType", args[0])
+    output.list_type = args[0].get("prim")
 
     params = re.match(r"\s*\{((?:.+\s*;)+(?:.+\s*)?)\s*\}\s*", value)
     if params is None:
@@ -1625,16 +1624,16 @@ def parseLIST(args, value) -> Data:
     if elements[len(elements) - 1] == "":
         elements.pop()
     for i in elements:
-        v = globals()["parse" + getattr(output, "listType")["prim"].upper()](args[0], i)
-        setattr(v, "parent", output.name)
+        v: Data = globals()["parse" + output.list_type.upper()](args[0], i)
+        v.parent = output.name
         output.value[0].append(v)
     return output
 
 
 def parseMAP(args, value) -> Data:
     output = Data("map", [dict()])
-    setattr(output, "keyType", args[0])
-    setattr(output, "valueType", args[1])
+    output.key_type = args[0].get("prim")
+    output.value_type = args[1].get("prim")
 
     params = re.match(
         r"\s*\{\s*((?:Elt\s+.+\s+.+\s*;\s*)+(?:Elt\s+.+\s+.+\s*)?)\}\s*", value
@@ -1655,7 +1654,7 @@ def parseMAP(args, value) -> Data:
                 {"args": args, "value": value},
             )
         # r[1] is the key, and r[2] is the value
-        match getattr(output, "keyType")["prim"]:
+        match output.key_type:
             case (
                 "int" | "mutez" | "nat" | "timestamp" | "bytes" | "signature" | "bool"
             ):
@@ -1670,9 +1669,9 @@ def parseMAP(args, value) -> Data:
                     )
             case _:
                 raise CustomException("not implemented", {"args": args, "value": value})
-        output.value[0][r[1]] = globals()[
-            "parse" + getattr(output, "valueType")["prim"].upper()
-        ](args[1]["args"], r[2])
+        output.value[0][r[1]] = globals()["parse" + output.value_type.upper()](
+            args[1], r[2]
+        )
     return output
 
 
@@ -1686,8 +1685,8 @@ def parseNAT(args, value) -> Data:
 
 def parseOPTION(args, value) -> Data:
     # Currently no parameter type check is being done
-    output = Data("option", [])
-    setattr(output, "optionType", [args[0]["prim"]])
+    output = Data("option")
+    output.option_type.append(args[0].get("prim"))
     params = re.match(r"\s*\(\s*(?:(?:Some)\s+(.+)|(?:None)\s*)\s*\)\s*", value)
     if params is None:
         raise CustomException(
@@ -1695,13 +1694,11 @@ def parseOPTION(args, value) -> Data:
             {"args": args, "value": value},
         )
     if "None" in params[0]:
-        setattr(output, "optionValue", "None")
+        output.option_value = "None"
     else:
-        setattr(output, "optionValue", "Some")
-        v = globals()["parse" + getattr(output, "optionType")[0].upper()](
-            args, params[1]
-        )
-        setattr(v, "parent", output.name)
+        output.option_value = "Some"
+        v: Data = globals()["parse" + output.option_type[0].upper()](args, params[1])
+        v.parent = output.name
         output.value.append(v)
     return output
 
@@ -1715,12 +1712,10 @@ def parseOR(args, value) -> Data:
             "input doesn't match with the specified types",
             {"args": args, "value": value},
         )
-    setattr(output, "orValue", params[1])
-    setattr(output, "orType", args)
+    output.or_value = params[1]
+    output.or_type = [x.get("prim") for x in args]
     v = Data(
-        getattr(output, "orType")[0]["prim"]
-        if getattr(output, "orValue") == "Left"
-        else getattr(output, "orType")[1]["prim"],
+        output.or_type[0] if output.or_value == "Left" else output.or_type[1],
         [params[2]],
     )
     v.parent = output.name
@@ -1729,7 +1724,7 @@ def parseOR(args, value) -> Data:
 
 
 def parsePAIR(args, value) -> Data:
-    output = Data("pair", [])
+    output = Data("pair")
     params = re.match(
         r"\s*\(\s*Pair\s+((?:\(.+\))|(?:.+?))\s+((?:\(.+\))|(?:.+?))\s*\)\s*", value
     )
@@ -1738,21 +1733,21 @@ def parsePAIR(args, value) -> Data:
             "input doesn't match with the specified types",
             {"args": args, "value": value},
         )
-    v1 = globals()["parse" + args[0]["prim"].upper()](
+    v1: Data = globals()["parse" + args[0]["prim"].upper()](
         args[0].get("args", []), params[1]
     )
-    setattr(v1, "parent", output.name)
-    v2 = globals()["parse" + args[1]["prim"].upper()](
+    v1.parent = output.name
+    v2: Data = globals()["parse" + args[1]["prim"].upper()](
         args[1].get("args", []), params[2]
     )
-    setattr(v2, "parent", output.name)
+    v2.parent = output.name
     output.value.extend([v1, v2])
     return output
 
 
 def parseSET(args, value) -> Data:
     output = Data("set", [set()])
-    setattr(output, "setType", args[0])
+    output.set_type = args[0].get("prim")
 
     params = re.match(r"\s*\{((?:.+\s*;)+(?:.+\s*)?)\s*\}\s*", value)
     if params is None:
@@ -1764,7 +1759,7 @@ def parseSET(args, value) -> Data:
     if elements[len(elements) - 1] == "":
         elements.pop()
     for i in range(len(elements)):
-        match getattr(output, "setType")["prim"]:
+        match output.set_type:
             case (
                 "int" | "mutez" | "nat" | "timestamp" | "bytes" | "signature" | "bool"
             ):
