@@ -1,4 +1,6 @@
 #!/usr/bin/python3
+from __future__ import annotations
+
 import copy
 import dataclasses
 import datetime
@@ -7,6 +9,7 @@ import re
 import subprocess
 import sys
 from collections import deque
+from typing import Any, Dict
 
 import click
 import z3
@@ -32,18 +35,37 @@ Content of the exception:
 {json.dumps(value.extra_params if hasattr(value, "extra_params") else [])}
 -------------------------------
 State at the time of exception:
-{json.dumps(dataclasses.asdict(_variables.CURRENT_STATE))}
+{json.dumps(dataclasses.asdict(_variables.CURRENT_RUN.current_state))}
 -------------------------------
 Stack at the time of exception:
-{json.dumps([dataclasses.asdict(x) for x in _variables.STACK])}
+{json.dumps([dataclasses.asdict(x) for x in _variables.CURRENT_RUN.stack])}
 -------------------------------
 Recorded steps at the time of exception:
-{json.dumps([dataclasses.asdict(x) for x in _variables.STEPS])}
+{json.dumps([dataclasses.asdict(x) for x in _variables.CURRENT_RUN.steps])}
 """
     )
 
 
 sys.excepthook = excepthook
+
+
+def michelson_interpreter(code: list):
+    CR = _variables.CURRENT_RUN
+
+    for i in code:
+        if isinstance(i, list):
+            if i[-1]["prim"] == "IF":
+                process_ifmacro(i)
+            else:
+                process_unpairmacro(i)
+        else:
+            step = process_instruction(i, CR.stack)
+            if step is not None and "IF" not in i["prim"]:
+                CR.steps.append(step)
+
+    CR.current_path_constraint.processed = (
+        CR.current_path_constraint.satisfiable
+    ) = CR.executed = True
 
 
 @click.command()
@@ -86,7 +108,7 @@ sys.excepthook = excepthook
     type=int,
 )
 @click.argument("script", type=click.Path(exists=True, dir_okay=False, readable=True))
-def michelson_interpreter(
+def main(
     parameter: str,
     storage: str,
     account: str,
@@ -99,12 +121,7 @@ def michelson_interpreter(
     timestamp,
     script: click.Path,
 ):
-    _variables.CURRENT_STATE = _types.State(
-        account, address, amount, balance, entrypoint, gas_limit, _id, timestamp
-    )
-    CPC = _variables.CURRENT_PATH_CONSTRAINT = _types.PathConstraint()
-    _variables.PATH_CONSTRAINTS.append(_variables.CURRENT_PATH_CONSTRAINT)
-
+    # Parsing the script
     with open(str(script), encoding="utf-8") as f:
         s = subprocess.run(
             ["./ext/michelson-parser-wrapper/bin/michelson-parser.js"],
@@ -122,70 +139,160 @@ def michelson_interpreter(
         s[2]["args"],
     )
 
-    _variables.STACK.append(
+    # Initial run
+    CR = _variables.CURRENT_RUN = _types.Run()
+    _variables.RUNS.append(CR)
+
+    # Setting up
+    ## State
+    CR.current_state = _types.State(
+        account, address, amount, balance, entrypoint, gas_limit, _id, timestamp
+    )
+    CR.states.append(CR.current_state)
+    ## Initial pair
+    CR.stack.append(
         initialize(
             parameter_type["args"][0], parameter, storage_type["args"][0], storage
         )
     )
-    # Adding the initial `pair` as a bool here
+    ## PCT
+    CPC = CR.current_path_constraint = _types.PathConstraint()
+
+    CR.path_constraints.append(CPC)
+    ## Adding the initial `pair` as a bool here
     CPC.input_variables = {
-        _variables.STACK[-1].name: _types.SYMBOLIC_VARIABLES.get(
-            _variables.STACK[-1].name, z3.Bool(_variables.STACK[-1].name)
+        CR.stack[0].name: CR.symbolic_variables.get(
+            CR.stack[0].name, z3.Bool(CR.stack[0].name)
         )
     }
-    # Adding whatever's inside that `pair` + state variables
+    ## + adding whatever's inside that `pair` + state variables
     CPC.input_variables.update(
         {
-            x: _types.SYMBOLIC_VARIABLES.get(x, z3.Bool(x))
-            for x in _functions.find_nested(_variables.STACK[-1])
+            x.name: CR.symbolic_variables.get(x.name, z3.Bool(x.name))
+            for x in _functions.find_nested(CR.stack[0])
             + [
-                _functions.applyAMOUNT({}, None, deque()).name,
-                _functions.applyBALANCE({}, None, deque()).name,
-                _functions.applyCHAIN_ID({}, None, deque()).name,
-                _functions.applyNOW({}, None, deque()).name,
-                _functions.applySELF({}, None, deque()).name,
-                _functions.applySENDER({}, None, deque()).name,
-                _functions.applySOURCE({}, None, deque()).name,
+                _functions.applyAMOUNT({}, None, deque()),
+                _functions.applyBALANCE({}, None, deque()),
+                _functions.applyCHAIN_ID({}, None, deque()),
+                _functions.applyNOW({}, None, deque()),
+                _functions.applySELF({}, None, deque()),
+                _functions.applySENDER({}, None, deque()),
+                _functions.applySOURCE({}, None, deque()),
             ]
         }
     )
-    _variables.STATES.append(copy.deepcopy(_variables.CURRENT_STATE))
-    _variables.STEPS.append(
+    ## Adding initial `pair` as the first step
+    CR.steps.append(
         _types.Step(
-            _types.Delta([], [_variables.STACK[0]]),
+            _types.Delta([], [CR.stack[0]]),
             [parameter_type, storage_type],
-            list(copy.deepcopy(_variables.STACK)),
+            list(copy.deepcopy(CR.stack)),
         )
     )
 
-    for i in code:
-        if isinstance(i, list):
-            if i[-1]["prim"] == "IF":
-                process_ifmacro(i)
-            else:
-                process_unpairmacro(i)
-        else:
-            step = process_instruction(i, _variables.STACK)
-            if step is not None and "IF" not in i["prim"]:
-                _variables.STEPS.append(step)
+    # Execution
+    michelson_interpreter(code)
 
-    _variables.CURRENT_PATH_CONSTRAINT.is_processed = (
-        _variables.CURRENT_PATH_CONSTRAINT.is_satisfiable
-    ) = True
-
+    # Inspection of path constraints
+    s = z3.Solver()
+    pct = [
+        {
+            "predicates": CR.current_path_constraint.predicates,
+            "sat": CR.current_path_constraint.satisfiable,
+        }
+    ]
+    for i in CR.path_constraints[1:]:
+        s.add(i.predicates)
+        i.satisfiable = True if s.check() == z3.sat else False
+        pct.append({"predicates": i.predicates, "sat": i.satisfiable})
+        if i.satisfiable:
+            r = copy.deepcopy(CR)
+            _variables.RUNS.append(r)
+            # Preprocessing
+            r.stack.clear()
+            r.path_constraints.clear()
+            r.steps.clear()
+            r.executed = False
+            r.stack.append(copy.deepcopy(CR.concrete_variables["pair_0"]))
+            r.concrete_variables = {r.stack[0].name: r.stack[0]}
+            r.concrete_variables.update(
+                {x.name: x for x in _functions.find_nested(r.stack[0])}
+            )
+            r.concrete_variables.update(
+                {
+                    x: copy.deepcopy(CR.concrete_variables[x])
+                    for x in CR.concrete_variables.keys()
+                    if x.startswith("sv_")
+                }
+            )
+            for i in s.model():
+                if i.name().startswith("sv_"):  # type: ignore
+                    match i.name().split("_")[1]:  # type: ignore
+                        case "amount" | "balance":
+                            setattr(
+                                r.current_state,
+                                "amount",
+                                (s.model()[CR.symbolic_variables[i.name()]]).as_long(),  # type: ignore
+                            )
+                            setattr(
+                                r.current_state,
+                                "balance",
+                                (s.model()[CR.symbolic_variables[i.name()]]).as_long(),  # type: ignore
+                            )
+                        case "now":
+                            setattr(
+                                r.current_state,
+                                "timestamp",
+                                (s.model()[CR.symbolic_variables[i.name()]]).as_long(),  # type: ignore
+                            )
+                        case "self":
+                            r.concrete_variables[i.name()].value[0].value = [  # type: ignore
+                                str(s.model()[CR.symbolic_variables[i.name()]])  # type: ignore
+                            ]
+                            setattr(
+                                r.current_state,
+                                "address",
+                                str(s.model()[CR.symbolic_variables[i.name()]]),  # type: ignore
+                            )
+                            continue
+                        case "sender" | "source":
+                            setattr(
+                                r.current_state,
+                                "address",
+                                str(s.model()[CR.symbolic_variables[i.name()]]),  # type: ignore
+                            )
+                        case _:
+                            continue
+                r.concrete_variables[i.name()].value = [str(s.model()[CR.symbolic_variables[i.name()]])]  # type: ignore
+            r.symbolic_variables = {r.stack[0].name: z3.Bool(r.stack[0].name)}
+            r.symbolic_variables.update(
+                {
+                    x: copy.deepcopy(CR.symbolic_variables[x])
+                    for x in CR.current_path_constraint.input_variables.keys()
+                }
+            )
+            r.path_constraints.append(_types.PathConstraint())
+            r.path_constraints[0].input_variables = copy.deepcopy(r.symbolic_variables)
+            r.current_path_constraint = r.path_constraints[0]
+            r.variable_names = {
+                x: {
+                    int(y.split("_")[1])
+                    for y in r.current_path_constraint.input_variables.keys()
+                    if y.startswith(x)
+                }
+                for x in set(
+                    [
+                        z.split("_")[0]
+                        for z in r.current_path_constraint.input_variables.keys()
+                        if not z.startswith("sv_")
+                    ]
+                )
+            }
+        s.reset()
     print(
-        json.dumps(
-            [dataclasses.asdict(x) for x in _variables.STEPS],
-            default=lambda x: list(x) if isinstance(x, set) else x,
-        )
-    )
-    print(
-        json.dumps(
-            [dataclasses.asdict(x) for x in _variables.PATH_CONSTRAINTS],
-            default=lambda x: str(x) if isinstance(x, z3.Z3PPObject) else x,
-        )
+        json.dumps(pct, default=lambda x: str(x) if isinstance(x, z3.Z3PPObject) else x)
     )
 
 
 if __name__ == "__main__":
-    michelson_interpreter()
+    main()

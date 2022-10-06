@@ -1,17 +1,14 @@
 #!/usr/bin/python3
-import operator
-from collections import deque
-from typing import Deque, List
+from __future__ import annotations
 
-from _types import Data, PathConstraint, State, Step
+import operator
+from typing import List
+
+from _types import Run
 
 # Variables
-CURRENT_STATE: State = State()
-CURRENT_PATH_CONSTRAINT: PathConstraint
-STACK: Deque[Data] = deque()
-STATES: List[State] = []
-STEPS: List[Step] = []
-PATH_CONSTRAINTS: List[PathConstraint] = []
+CURRENT_RUN: Run
+RUNS: List[Run] = []
 UNPAIR_FLAG: bool = False
 
 # Constants

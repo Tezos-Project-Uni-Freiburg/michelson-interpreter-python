@@ -1,4 +1,6 @@
 #!/usr/bin/python3
+from __future__ import annotations
+
 import ast
 import json
 import operator
@@ -14,7 +16,6 @@ from typing import Any, Deque, Dict, List
 import z3
 from base58 import b58encode_check
 
-import _types
 import _variables
 from _types import CustomException, Data, Delta, Step
 
@@ -290,7 +291,7 @@ def process_instruction(
     instruction: Dict[str, Any], stack: Deque[Data], unpair_flag: bool = False
 ) -> Step:
     if "IF" in instruction["prim"]:
-        _variables.STEPS.append(
+        _variables.CURRENT_RUN.steps.append(
             Step(Delta([], []), [instruction], list(deepcopy(stack)))
         )
     removed: List[Data] = []
@@ -362,7 +363,9 @@ def applyAMOUNT(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
-    output = Data("mutez", [str(_variables.CURRENT_STATE.amount)], None, "sv_amount")
+    output = Data(
+        "mutez", [str(_variables.CURRENT_RUN.current_state.amount)], None, "sv_amount"
+    )
     return output
 
 
@@ -405,7 +408,9 @@ def applyBALANCE(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
-    return Data("mutez", [str(_variables.CURRENT_STATE.balance)], None, "sv_balance")
+    return Data(
+        "mutez", [str(_variables.CURRENT_RUN.current_state.balance)], None, "sv_balance"
+    )
 
 
 def applyBLAKE2B(
@@ -570,7 +575,7 @@ def applyDIP(
         else:
             step = process_instruction(i, stack)
             if "IF" not in i["prim"]:
-                _variables.STEPS.append(step)
+                _variables.CURRENT_RUN.steps.append(step)
     for i in p:
         stack.append(i)
     return None
@@ -796,14 +801,14 @@ def applyIF(
         else:
             step = process_instruction(i, stack)
             if "IF" not in i["prim"]:
-                _variables.STEPS.append(step)
+                _variables.CURRENT_RUN.steps.append(step)
     return None
 
 
 def applyIF_CONS(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
-    CPC = _variables.CURRENT_PATH_CONSTRAINT
+    CPC = _variables.CURRENT_RUN.current_path_constraint
     if len(parameters[0].value[0]) > 0:
         d = parameters[0].value[0].pop(0)
         stack.append(parameters[0])
@@ -813,16 +818,20 @@ def applyIF_CONS(
         branch = 1
 
     if parameters[0].name in CPC.input_variables:
-        _variables.PATH_CONSTRAINTS.append(deepcopy(CPC))
+        _variables.CURRENT_RUN.path_constraints.append(deepcopy(CPC))
         CPC.predicates.append(
-            operator.gt(_types.SYMBOLIC_VARIABLES[parameters[0].name], 0)  # type: ignore
+            operator.gt(_variables.CURRENT_RUN.symbolic_variables[parameters[0].name], 0)  # type: ignore
             if branch == 0
-            else operator.eq(_types.SYMBOLIC_VARIABLES[parameters[0].name], 0)
+            else operator.eq(
+                _variables.CURRENT_RUN.symbolic_variables[parameters[0].name], 0
+            )
         )
-        _variables.PATH_CONSTRAINTS[-1].predicates.append(
-            operator.eq(_types.SYMBOLIC_VARIABLES[parameters[0].name], 0)
+        _variables.CURRENT_RUN.path_constraints[-1].predicates.append(
+            operator.eq(
+                _variables.CURRENT_RUN.symbolic_variables[parameters[0].name], 0
+            )
             if branch == 0
-            else operator.gt(_types.SYMBOLIC_VARIABLES[parameters[0].name], 0)  # type: ignore
+            else operator.gt(_variables.CURRENT_RUN.symbolic_variables[parameters[0].name], 0)  # type: ignore
         )
 
     for i in flatten(instruction["args"][branch]):
@@ -834,27 +843,27 @@ def applyIF_CONS(
         else:
             step = process_instruction(i, stack)
             if "IF" not in i["prim"]:
-                _variables.STEPS.append(step)
+                _variables.CURRENT_RUN.steps.append(step)
     return None
 
 
 def applyIF_LEFT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
-    CPC = _variables.CURRENT_PATH_CONSTRAINT
+    CPC = _variables.CURRENT_RUN.current_path_constraint
     branch = 0 if parameters[0].or_value == "Left" else 1
 
     if parameters[0].name in CPC.input_variables:
-        _variables.PATH_CONSTRAINTS.append(deepcopy(CPC))
+        _variables.CURRENT_RUN.path_constraints.append(deepcopy(CPC))
         CPC.predicates.append(
-            _types.SYMBOLIC_VARIABLES[parameters[0].name]
+            _variables.CURRENT_RUN.symbolic_variables[parameters[0].name]
             if branch == 0
-            else z3.Not(_types.SYMBOLIC_VARIABLES[parameters[0].name])
+            else z3.Not(_variables.CURRENT_RUN.symbolic_variables[parameters[0].name])
         )
-        _variables.PATH_CONSTRAINTS[-1].predicates.append(
-            z3.Not(_types.SYMBOLIC_VARIABLES[parameters[0].name])
+        _variables.CURRENT_RUN.path_constraints[-1].predicates.append(
+            z3.Not(_variables.CURRENT_RUN.symbolic_variables[parameters[0].name])
             if branch == 0
-            else _types.SYMBOLIC_VARIABLES[parameters[0].name]
+            else _variables.CURRENT_RUN.symbolic_variables[parameters[0].name]
         )
 
     stack.append(parameters[0].value[0])
@@ -867,14 +876,14 @@ def applyIF_LEFT(
         else:
             step = process_instruction(i, stack)
             if "IF" not in i["prim"]:
-                _variables.STEPS.append(step)
+                _variables.CURRENT_RUN.steps.append(step)
     return None
 
 
 def applyIF_NONE(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
-    CPC = _variables.CURRENT_PATH_CONSTRAINT
+    CPC = _variables.CURRENT_RUN.current_path_constraint
     if parameters[0].option_value == "None":
         branch = 0
     else:
@@ -882,16 +891,16 @@ def applyIF_NONE(
         stack.append(parameters[0].value[0])
 
     if parameters[0].name in CPC.input_variables:
-        _variables.PATH_CONSTRAINTS.append(deepcopy(CPC))
+        _variables.CURRENT_RUN.path_constraints.append(deepcopy(CPC))
         CPC.predicates.append(
-            z3.Not(_types.SYMBOLIC_VARIABLES[parameters[0].name])
+            z3.Not(_variables.CURRENT_RUN.symbolic_variables[parameters[0].name])
             if branch == 0
-            else _types.SYMBOLIC_VARIABLES[parameters[0].name]
+            else _variables.CURRENT_RUN.symbolic_variables[parameters[0].name]
         )
-        _variables.PATH_CONSTRAINTS[-1].predicates.append(
-            _types.SYMBOLIC_VARIABLES[parameters[0].name]
+        _variables.CURRENT_RUN.path_constraints[-1].predicates.append(
+            _variables.CURRENT_RUN.symbolic_variables[parameters[0].name]
             if branch == 0
-            else z3.Not(_types.SYMBOLIC_VARIABLES[parameters[0].name])
+            else z3.Not(_variables.CURRENT_RUN.symbolic_variables[parameters[0].name])
         )
 
     for i in flatten(instruction["args"][branch]):
@@ -903,7 +912,7 @@ def applyIF_NONE(
         else:
             step = process_instruction(i, stack)
             if "IF" not in i["prim"]:
-                _variables.STEPS.append(step)
+                _variables.CURRENT_RUN.steps.append(step)
     return None
 
 
@@ -994,7 +1003,7 @@ def applyLOOP(
             else:
                 step = process_instruction(i, stack)
                 if "IF" not in i["prim"]:
-                    _variables.STEPS.append(step)
+                    _variables.CURRENT_RUN.steps.append(step)
         top = stack.pop()
         if top.prim != "bool":
             raise CustomException(
@@ -1031,7 +1040,7 @@ def applyLOOP_LEFT(
             else:
                 step = process_instruction(i, stack)
                 if "IF" not in i["prim"]:
-                    _variables.STEPS.append(step)
+                    _variables.CURRENT_RUN.steps.append(step)
         top = stack.pop()
         v = False
         if top.prim != "or":
@@ -1086,7 +1095,7 @@ def applyMAP(instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[
         for j in instruction["args"][::-1]:
             step = process_instruction(j, stack)
             if "IF" not in j.prim:
-                _variables.STEPS.append(step)
+                _variables.CURRENT_RUN.steps.append(step)
         new_list.append(stack.pop())
     parameters[0].value[0] = new_list
     return parameters[0]
@@ -1184,7 +1193,12 @@ def applyNOW(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
-    return Data("timestamp", [str(_variables.CURRENT_STATE.timestamp)], None, "sv_now")
+    return Data(
+        "timestamp",
+        [str(_variables.CURRENT_RUN.current_state.timestamp)],
+        None,
+        "sv_now",
+    )
 
 
 def applyOR(
@@ -1317,7 +1331,7 @@ def applySELF(
     output = Data("contract", [], None, "sv_self")
     output.contract_type = "unit"
     output.value.append(
-        Data("address", [_variables.CURRENT_STATE.address], output.name)
+        Data("address", [_variables.CURRENT_RUN.current_state.address], output.name)
     )
     return output
 
@@ -1328,7 +1342,9 @@ def applySENDER(
     stack: Deque[Data],
 ) -> Data:
     # Not implemented completely/correctly
-    return Data("address", [_variables.CURRENT_STATE.address], None, "sv_sender")
+    return Data(
+        "address", [_variables.CURRENT_RUN.current_state.address], None, "sv_sender"
+    )
 
 
 def applySET_DELEGATE(
@@ -1402,7 +1418,9 @@ def applySOURCE(
     stack: Deque[Data],
 ) -> Data:
     # Not implemented completely
-    return Data("address", [_variables.CURRENT_STATE.address], None, "sv_source")
+    return Data(
+        "address", [_variables.CURRENT_RUN.current_state.address], None, "sv_source"
+    )
 
 
 def applySUB(
@@ -1826,11 +1844,11 @@ def dequemove(l: Deque, from_index: int, to_index: int) -> None:
         l.insert(end_index, popmultiple(l, from_index))
 
 
-def find_nested(d: Data) -> List[str]:
+def find_nested(d: Data) -> List[Data]:
     o = []
     for i in d.value:
         if isinstance(i, Data):
-            o.extend([i.name] + find_nested(i))
+            o.extend([i] + find_nested(i))
     return o
 
 
@@ -1859,54 +1877,56 @@ def popmultiple(d: Deque, c: int) -> List:
 
 def process_ifmacro(l: List[Dict[str, Any]]) -> None:
     # TODO: definitely the most inefficient-looking part of the codebase
-    CPC = _variables.CURRENT_PATH_CONSTRAINT
+    CPC = _variables.CURRENT_RUN.current_path_constraint
     op = _variables.OPS[l[1 if l[0]["prim"] == "COMPARE" else 0]["prim"]]
     checked_variables = [
-        _types.SYMBOLIC_VARIABLES[_variables.STACK[-1].name]
-        if _variables.STACK[-1].name in CPC.input_variables
-        else _variables.STACK[-1].value[0]
+        _variables.CURRENT_RUN.symbolic_variables[_variables.CURRENT_RUN.stack[-1].name]
+        if _variables.CURRENT_RUN.stack[-1].name in CPC.input_variables
+        else _variables.CURRENT_RUN.stack[-1].value[0]
     ]
     # Some preprocessing
     if l[0]["prim"] == "COMPARE":
         checked_variables.append(
-            _types.SYMBOLIC_VARIABLES[_variables.STACK[-2].name]
-            if _variables.STACK[-2].name in CPC.input_variables
-            else _variables.STACK[-2].value[0]
+            _variables.CURRENT_RUN.symbolic_variables[
+                _variables.CURRENT_RUN.stack[-2].name
+            ]
+            if _variables.CURRENT_RUN.stack[-2].name in CPC.input_variables
+            else _variables.CURRENT_RUN.stack[-2].value[0]
         )
         # Execute COMPARE here
         ins_c = l.pop(0)
-        step = process_instruction(ins_c, _variables.STACK)
+        step = process_instruction(ins_c, _variables.CURRENT_RUN.stack)
         if step is not None:
-            _variables.STEPS.append(step)
+            _variables.CURRENT_RUN.steps.append(step)
     else:  # EQ, GE, etc...
         checked_variables.append("0")
     CPC.predicates.append(op(checked_variables[-2], checked_variables[-1]))
     ins_op, ins_if = l[0], l[1]
     # Execute EQ, GE, etc. here
-    step = process_instruction(ins_op, _variables.STACK)
+    step = process_instruction(ins_op, _variables.CURRENT_RUN.stack)
     if step is not None:
-        _variables.STEPS.append(step)
+        _variables.CURRENT_RUN.steps.append(step)
     # Now we know which branch will be executed
     # negating & forking the current path constraint
-    _variables.PATH_CONSTRAINTS.append(deepcopy(CPC))
-    if _variables.STACK[-1].value[0].lower() == "true":
-        _variables.PATH_CONSTRAINTS[-1].predicates.append(
-            z3.Not(_variables.PATH_CONSTRAINTS[-1].predicates.pop())
+    _variables.CURRENT_RUN.path_constraints.append(deepcopy(CPC))
+    if _variables.CURRENT_RUN.stack[-1].value[0].lower() == "true":
+        _variables.CURRENT_RUN.path_constraints[-1].predicates.append(
+            z3.Not(_variables.CURRENT_RUN.path_constraints[-1].predicates.pop())
         )
     else:
         CPC.predicates.append(z3.Not(CPC.predicates.pop()))
     # Now processing the actual IF
-    _ = process_instruction(ins_if, _variables.STACK)
+    _ = process_instruction(ins_if, _variables.CURRENT_RUN.stack)
 
 
 def process_unpairmacro(l: List[Dict[str, Any]]) -> None:
     # Process DUP
     dup = l.pop(0)
-    step = process_instruction(dup, _variables.STACK, unpair_flag=True)
+    step = process_instruction(dup, _variables.CURRENT_RUN.stack, unpair_flag=True)
     if step is not None and "IF" not in dup["prim"]:
-        _variables.STEPS.append(step)
+        _variables.CURRENT_RUN.steps.append(step)
     # Process the rest
     for i in flatten(l):
-        step = process_instruction(i, _variables.STACK)
+        step = process_instruction(i, _variables.CURRENT_RUN.stack)
         if step is not None and "IF" not in i["prim"]:
-            _variables.STEPS.append(step)
+            _variables.CURRENT_RUN.steps.append(step)

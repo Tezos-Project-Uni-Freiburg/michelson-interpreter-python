@@ -1,10 +1,15 @@
 #!/usr/bin/python3
+from __future__ import annotations
+
+from collections import deque
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, List, Set
+from typing import Any, Deque, Dict, List, Set
 
 import z3
+
+import _variables
 
 
 class CustomException(Exception):
@@ -72,7 +77,7 @@ class Data:
             self.value[0] = ""
         if self.name == "":
             self.name = create_variable_name(self.prim)
-        CONCRETE_VARIABLES[self.name] = self
+        _variables.CURRENT_RUN.concrete_variables[self.name] = self
         create_symbolic_variable(self)
 
 
@@ -111,29 +116,43 @@ class Step:
 class PathConstraint:
     input_variables: Dict[str, z3.ExprRef] = field(default_factory=dict)
     predicates: List[Any] = field(default_factory=list)
-    is_processed: bool = False
-    is_satisfiable: bool = False
+    processed: bool = False
+    satisfiable: bool = False
 
 
-VARIABLE_NAMES: Dict[str, Set[int]] = {}
-CONCRETE_VARIABLES: Dict[str, Data] = {}
-SYMBOLIC_VARIABLES: Dict[str, z3.ExprRef] = {}
+@dataclass
+class Run:
+    states: List[State] = field(default_factory=list)
+    current_state: State = field(default_factory=State)
+    stack: Deque[Data] = field(default_factory=deque)
+    path_constraints: List[PathConstraint] = field(default_factory=list)
+    current_path_constraint: PathConstraint = field(default_factory=PathConstraint)
+    steps: List[Step] = field(default_factory=list)
+    variable_names: Dict[str, Set[int]] = field(default_factory=dict)
+    concrete_variables: Dict[str, Data] = field(default_factory=dict)
+    symbolic_variables: Dict[str, z3.ExprRef] = field(default_factory=dict)
+    executed: bool = field(default=False, init=False)
+
+
+# VARIABLE_NAMES: Dict[str, Set[int]] = {}
+# CONCRETE_VARIABLES: Dict[str, Data] = {}
+# SYMBOLIC_VARIABLES: Dict[str, z3.ExprRef] = {}
 
 
 def create_variable_name(name: str) -> str:
     n = 0
-    if VARIABLE_NAMES.get(name):
-        n = max(VARIABLE_NAMES[name]) + 1
-        VARIABLE_NAMES[name].add(n)
+    if _variables.CURRENT_RUN.variable_names.get(name):
+        n = max(_variables.CURRENT_RUN.variable_names[name]) + 1
+        _variables.CURRENT_RUN.variable_names[name].add(n)
     else:
-        VARIABLE_NAMES[name] = {n}
+        _variables.CURRENT_RUN.variable_names[name] = {n}
     return name + "_" + str(n)
 
 
 def create_symbolic_variable(d: Data) -> None:
     match d.prim:
-        case "int" | "mutez" | "nat" | "list":
-            SYMBOLIC_VARIABLES[d.name] = z3.Int(d.name)
+        case "int" | "mutez" | "nat" | "list" | "timestamp":
+            _variables.CURRENT_RUN.symbolic_variables[d.name] = z3.Int(d.name)
         case (
             "address"
             | "bytes"
@@ -143,8 +162,8 @@ def create_symbolic_variable(d: Data) -> None:
             | "signature"
             | "string"
         ):
-            SYMBOLIC_VARIABLES[d.name] = z3.String(d.name)
-        case "bool" | "or" | "option" | "pair":
-            SYMBOLIC_VARIABLES[d.name] = z3.Bool(d.name)
+            _variables.CURRENT_RUN.symbolic_variables[d.name] = z3.String(d.name)
+        case "bool" | "contract" | "or" | "option" | "pair":
+            _variables.CURRENT_RUN.symbolic_variables[d.name] = z3.Bool(d.name)
         case _:
             pass
