@@ -29,10 +29,10 @@ def excepthook(type, value, traceback):
     # raise value
     print(
         f"""Got exception, details below:
-{value}
+{value.args[0]}
 -------------------------------
 Content of the exception:
-{json.dumps(value.extra_params if hasattr(value, "extra_params") else [])}
+{json.dumps(value.args[1] if len(value.args) > 1 else [])}
 -------------------------------
 State at the time of exception:
 {json.dumps(dataclasses.asdict(_variables.CURRENT_RUN.current_state))}
@@ -69,6 +69,8 @@ def michelson_interpreter(code: list):
         else:
             print("Unknown exception! Details below:")
             print(e)
+            print(CR.steps)
+            raise e
     else:
         CR.current_path_constraint.satisfiable = True
     CR.current_path_constraint.processed = CR.executed = True
@@ -80,9 +82,18 @@ def process_run():
     _variables.EXECUTED_RUNS.append(CR)
     s = z3.Solver()
     for i in CR.path_constraints[1:]:
-        if i.predicates in [
-            x.current_path_constraint.predicates for x in _variables.EXECUTED_RUNS
-        ]:
+        if (
+            len(
+                [
+                    True
+                    for x in _variables.EXECUTED_RUNS
+                    if set(i.predicates).issubset(
+                        set(x.current_path_constraint.predicates)
+                    )
+                ]
+            )
+            != 0
+        ):
             continue
         s.add(i.predicates)
         i.satisfiable = True if s.check() == z3.sat else False
@@ -110,45 +121,60 @@ def process_run():
                     )
                 }
             )
-            for i in s.model():
-                if i.name().startswith("sv_"):  # type: ignore
-                    match i.name().split("_")[1]:  # type: ignore
+            for j in s.model():
+                if j.name().startswith("sv_"):  # type: ignore
+                    match j.name().split("_")[1]:  # type: ignore
                         case "amount" | "balance":
                             setattr(
                                 r.current_state,
                                 "amount",
-                                s.model()[CR.symbolic_variables[i.name()]].as_long(),  # type: ignore
+                                s.model()[CR.symbolic_variables[j.name()]].as_long(),  # type: ignore
                             )
                             setattr(
                                 r.current_state,
                                 "balance",
-                                s.model()[CR.symbolic_variables[i.name()]].as_long(),  # type: ignore
+                                s.model()[CR.symbolic_variables[j.name()]].as_long(),  # type: ignore
                             )
                         case "now":
                             setattr(
                                 r.current_state,
                                 "timestamp",
-                                s.model()[CR.symbolic_variables[i.name()]].as_long(),  # type: ignore
+                                s.model()[CR.symbolic_variables[j.name()]].as_long(),  # type: ignore
                             )
-                        case "self":
-                            r.concrete_variables[i.name()].value[0].value = [  # type: ignore
-                                s.model()[CR.symbolic_variables[i.name()]].as_string()  # type: ignore
-                            ]
-                            setattr(
-                                r.current_state,
-                                "address",
-                                s.model()[CR.symbolic_variables[i.name()]].as_string(),  # type: ignore
-                            )
-                            continue
                         case "sender" | "source":
                             setattr(
                                 r.current_state,
                                 "address",
-                                s.model()[CR.symbolic_variables[i.name()]].as_string(),  # type: ignore
+                                str(s.model()[CR.symbolic_variables[j.name()]]),  # type: ignore
                             )
                         case _:
                             continue
-                r.concrete_variables[i.name()].value = [s.model()[CR.symbolic_variables[i.name()]].as_string()]  # type: ignore
+                match j.name().split("_")[0]:  # type: ignore
+                    case "or":
+                        # _variables.CREATE_VARIABLE = True
+                        if str(s.model()[CR.symbolic_variables[j.name()]]).lower() == "true":  # type: ignore
+                            r.concrete_variables[j.name()].or_value = "Left"  # type: ignore
+                            # r.concrete_variables[j.name()].value = [_types.Data(r.concrete_variables[j.name()].or_type[0], ["0"], j.name())]  # type: ignore
+                        else:
+                            r.concrete_variables[j.name()].or_value = "Right"  # type: ignore
+                            # r.concrete_variables[j.name()].value = [_types.Data(r.concrete_variables[j.name()].or_type[1], ["0"], j.name())]  # type: ignore
+                        # _variables.CREATE_VARIABLE = False
+                    case "option":
+                        if str(s.model()[CR.symbolic_variables[j.name()]]).lower() == "true":  # type: ignore
+                            r.concrete_variables[j.name()].option_value = "None"  # type: ignore
+                            for k in r.concrete_variables[j.name()].value:  # type: ignore
+                                r.concrete_variables.pop(k.name)
+                                r.symbolic_variables.pop(k.name)
+                            r.concrete_variables[j.name()].value.clear()  # type: ignore
+                        else:
+                            r.concrete_variables[j.name()].option_value = "Some"  # type: ignore
+                            # _variables.CREATE_VARIABLE = True
+                            # r.concrete_variables[j.name()].value = [_types.Data(r.concrete_variables[j.name()].option_type[0], [], j.name())]  # type: ignore
+                            # _variables.CREATE_VARIABLE = False
+                    case "pair":
+                        continue
+                    case _:
+                        r.concrete_variables[j.name()].value = [str(s.model()[CR.symbolic_variables[j.name()]])]  # type: ignore
             r.symbolic_variables = copy.deepcopy(CR.symbolic_variables)
             r.path_constraints.append(_types.PathConstraint())
             r.path_constraints[0].input_variables = copy.deepcopy(r.symbolic_variables)
@@ -278,7 +304,6 @@ def main(
                 _functions.applyBALANCE({}, None, deque()),
                 _functions.applyCHAIN_ID({}, None, deque()),
                 _functions.applyNOW({}, None, deque()),
-                _functions.applySELF({}, None, deque()),
                 _functions.applySENDER({}, None, deque()),
                 _functions.applySOURCE({}, None, deque()),
             ]

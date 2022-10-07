@@ -161,7 +161,7 @@ def create_symbolic_variable(d: Data) -> None:
             | "string"
         ):
             _variables.CURRENT_RUN.symbolic_variables[d.name] = z3.String(d.name)
-        case "bool" | "contract" | "or" | "option" | "pair":
+        case "bool" | "or" | "option" | "pair":
             _variables.CURRENT_RUN.symbolic_variables[d.name] = z3.Bool(d.name)
         case _:
             pass
