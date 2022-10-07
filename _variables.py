@@ -8,8 +8,10 @@ from _types import Run
 
 # Variables
 CURRENT_RUN: Run
-RUNS: List[Run] = []
+EXECUTED_RUNS: List[Run] = []
+REMAINING_RUNS: List[Run] = []
 UNPAIR_FLAG: bool = False
+CREATE_VARIABLE: bool = False
 
 # Constants
 OPS = {

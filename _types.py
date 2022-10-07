@@ -13,12 +13,8 @@ import _variables
 
 
 class CustomException(Exception):
-    message: str
-    extra_params: dict
-
-    def __init__(self, message: str, extra_params: dict) -> None:
-        super().__init__(message)
-        self.extra_params = extra_params
+    def __init__(self, message: str, extra_params: dict = {}) -> None:
+        super().__init__(message, extra_params)
 
 
 @dataclass
@@ -77,8 +73,9 @@ class Data:
             self.value[0] = ""
         if self.name == "":
             self.name = create_variable_name(self.prim)
-        _variables.CURRENT_RUN.concrete_variables[self.name] = self
-        create_symbolic_variable(self)
+        if _variables.CREATE_VARIABLE:
+            _variables.CURRENT_RUN.concrete_variables[self.name] = self
+            create_symbolic_variable(self)
 
 
 @dataclass
@@ -118,6 +115,7 @@ class PathConstraint:
     predicates: List[Any] = field(default_factory=list)
     processed: bool = False
     satisfiable: bool = False
+    reason: CustomException | None = field(default=None, init=False)
 
 
 @dataclass
