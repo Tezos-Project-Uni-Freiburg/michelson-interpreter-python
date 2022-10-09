@@ -984,8 +984,10 @@ def applyLEFT(
 def applyLOOP(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
-    top = stack.pop()
+    CPC = _variables.CURRENT_RUN.current_path_constraint
     v = False
+
+    top = stack.pop()
     if top.prim != "bool":
         raise CustomException(
             "top element of stack is not bool",
@@ -993,6 +995,20 @@ def applyLOOP(
         )
     else:
         v = top.value[0].lower() == "true"
+
+    # PCT
+    if top.name in CPC.input_variables:
+        if v:
+            CPC.predicates.append(_variables.CURRENT_RUN.symbolic_variables[top.name])
+        else:
+            CPC.predicates.append(
+                z3.Not(_variables.CURRENT_RUN.symbolic_variables[top.name])
+            )
+        _variables.CURRENT_RUN.path_constraints.append(deepcopy(CPC))
+        _variables.CURRENT_RUN.path_constraints[-1].predicates.append(
+            z3.Not(_variables.CURRENT_RUN.path_constraints[-1].predicates.pop())
+        )
+
     while v:
         for i in flatten(instruction["args"]):
             if isinstance(i, list):
@@ -1018,18 +1034,31 @@ def applyLOOP(
 def applyLOOP_LEFT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
-    top = stack.pop()
+    CPC = _variables.CURRENT_RUN.current_path_constraint
     v = False
-    if top.prim == "or":
+
+    top = stack.pop()
+    stack.append(top.value[0])
+    if top.prim != "or":
         raise CustomException(
             "top element of stack is not or",
             {"instruction": instruction, "parameters": parameters},
         )
-    elif top.or_value == "Right":
-        stack.append(top)
-        return None
-    else:
+    if top.or_value == "Left":
         v = True
+
+    # PCT
+    if top.name in CPC.input_variables:
+        if v:
+            CPC.predicates.append(_variables.CURRENT_RUN.symbolic_variables[top.name])
+        else:
+            CPC.predicates.append(
+                z3.Not(_variables.CURRENT_RUN.symbolic_variables[top.name])
+            )
+        _variables.CURRENT_RUN.path_constraints.append(deepcopy(CPC))
+        _variables.CURRENT_RUN.path_constraints[-1].predicates.append(
+            z3.Not(_variables.CURRENT_RUN.path_constraints[-1].predicates.pop())
+        )
     while v:
         for i in flatten(instruction["args"]):
             if isinstance(i, list):
@@ -1042,6 +1071,7 @@ def applyLOOP_LEFT(
                 if "IF" not in i["prim"]:
                     _variables.CURRENT_RUN.steps.append(step)
         top = stack.pop()
+        stack.append(top.value[0])
         v = False
         if top.prim != "or":
             raise CustomException(
@@ -1049,7 +1079,6 @@ def applyLOOP_LEFT(
                 {"instruction": instruction, "parameters": parameters},
             )
         elif top.or_value == "Right":
-            stack.append(top)
             return None
         else:
             v = True
