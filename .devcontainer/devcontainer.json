@@ -30,8 +30,7 @@
 		}
 	},
 	"postCreateCommand": [
-		"pip3 install --user -r requirements.txt",
-		"cd ext/michelson-parser-wrapper && npm install"
+		"pip3 install --user -r requirements.txt"
 	],
 	"remoteUser": "vscode",
 	"features": {
