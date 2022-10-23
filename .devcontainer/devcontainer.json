@@ -2,11 +2,8 @@
 // https://github.com/microsoft/vscode-dev-containers/tree/v0.245.2/containers/python-3
 {
 	"image": "mcr.microsoft.com/devcontainers/python:3.10-bullseye",
-	// Configure tool-specific properties.
 	"customizations": {
-		// Configure properties specific to VS Code.
 		"vscode": {
-			// Set *default* container specific settings.json values on container create.
 			"settings": {
 				"python.defaultInterpreterPath": "/usr/local/bin/python",
 				"python.linting.enabled": true,
@@ -19,25 +16,30 @@
 				"python.linting.mypyPath": "/usr/local/py-utils/bin/mypy",
 				"python.linting.pycodestylePath": "/usr/local/py-utils/bin/pycodestyle",
 				"python.linting.pydocstylePath": "/usr/local/py-utils/bin/pydocstyle",
-				"python.linting.pylintPath": "/usr/local/py-utils/bin/pylint"
+				"python.linting.pylintPath": "/usr/local/py-utils/bin/pylint",
+				"git.enableCommitSigning": true,
+				"python.formatting.blackArgs": [
+					"--target-version",
+					"py310"
+				]
 			},
-			// Add the IDs of extensions you want installed when the container is created.
 			"extensions": [
 				"ms-python.python",
 				"ms-python.vscode-pylance"
 			]
 		}
 	},
-	// Use 'forwardPorts' to make a list of ports inside the container available locally.
-	// "forwardPorts": [],
-	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "pip3 install --user -r requirements.txt",
-	// Comment out to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
+	"postCreateCommand": [
+		"pip3 install --user -r requirements.txt",
+		"cd ext/michelson-parser-wrapper && npm install"
+	],
 	"remoteUser": "vscode",
 	"features": {
-		// "ghcr.io/devcontainers/features/github-cli:1": {
-		// 	"version": "latest"
-		// },
+		"ghcr.io/devcontainers/features/common-utils:1": {
+			"installZsh": false,
+			"installOhMyZsh": false,
+			"username": "none"
+		},
 		"ghcr.io/devcontainers/features/git:1": {
 			"version": "latest"
 		},
