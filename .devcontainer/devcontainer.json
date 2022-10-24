@@ -29,9 +29,7 @@
 			]
 		}
 	},
-	"postCreateCommand": [
-		"pip3 install --user -r requirements.txt"
-	],
+	"postCreateCommand": "pip3 install --user -r requirements.txt",
 	"remoteUser": "vscode",
 	"features": {
 		"ghcr.io/devcontainers/features/common-utils:1": {
@@ -43,7 +41,7 @@
 			"version": "latest"
 		},
 		"ghcr.io/devcontainers/features/node:1": {
-			"version": "latest"
+			"version": "stable"
 		}
 	}
 }
