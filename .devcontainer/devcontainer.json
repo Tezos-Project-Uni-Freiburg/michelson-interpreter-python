@@ -1,5 +1,10 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
 // https://github.com/microsoft/vscode-dev-containers/tree/v0.245.2/containers/python-3
 {
-	"image": "ghcr.io/berkaycagir/michelson-interpreter-python-container:latest"
+	"image": "ghcr.io/berkaycagir/michelson-interpreter-python-container:latest",
+	"workspaceFolder": "/workspace",
+	"workspaceMount": "$HOME/GitHub/michelson-interpreter-python:/workspace/michelson-interpreter-python",
+	"mounts": [
+		"$HOME/GitHub/michelson-test-scripts:/workspace/michelson-test-scripts"
+	]
 }
