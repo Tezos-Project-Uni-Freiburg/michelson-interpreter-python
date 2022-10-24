@@ -1,5 +1,8 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
 // https://github.com/microsoft/vscode-dev-containers/tree/v0.245.2/containers/python-3
 {
-	"image": "ghcr.io/berkaycagir/michelson-interpreter-python-container:latest"
+	"image": "ghcr.io/berkaycagir/michelson-interpreter-python-container:latest",
+	"mounts": [
+		"source=${localEnv:HOME}/GitHub/michelson-test-scripts,target=/workspaces/michelson-test-scripts,type=bind,consistency=cached"
+	]
 }
