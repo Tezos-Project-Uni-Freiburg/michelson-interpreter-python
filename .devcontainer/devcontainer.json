@@ -4,5 +4,8 @@
 	"image": "ghcr.io/berkaycagir/michelson-interpreter-python-container:latest",
 	"mounts": [
 		"source=${localEnv:HOME}/GitHub/michelson-test-scripts,target=/workspaces/michelson-test-scripts,type=bind,consistency=cached"
+	],
+	"runArgs": [
+		"--rm"
 	]
 }
