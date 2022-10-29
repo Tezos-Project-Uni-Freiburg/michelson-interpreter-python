@@ -75,7 +75,9 @@ class Data:
             self.name = create_variable_name(self.prim)
         if _variables.CREATE_VARIABLE:
             _variables.CURRENT_RUN.concrete_variables[self.name] = self
-            create_symbolic_variable(self)
+            _variables.CURRENT_RUN.symbolic_variables[
+                self.name
+            ] = create_symbolic_variable(self)
 
 
 @dataclass
@@ -129,6 +131,8 @@ class Run:
     variable_names: Dict[str, Set[int]] = field(default_factory=dict)
     concrete_variables: Dict[str, Data] = field(default_factory=dict)
     symbolic_variables: Dict[str, z3.ExprRef] = field(default_factory=dict)
+    ephemeral_variables: Dict[str, z3.ExprRef] = field(default_factory=dict, init=False)
+    ephemeral_predicates: List[Any] = field(default_factory=list, init=False)
     executed: bool = field(default=False, init=False)
 
 
@@ -147,10 +151,10 @@ def create_variable_name(name: str) -> str:
     return name + "_" + str(n)
 
 
-def create_symbolic_variable(d: Data) -> None:
+def create_symbolic_variable(d: Data) -> z3.ExprRef:
     match d.prim:
         case "int" | "mutez" | "nat" | "list" | "timestamp":
-            _variables.CURRENT_RUN.symbolic_variables[d.name] = z3.Int(d.name)
+            return z3.Int(d.name)
         case (
             "address"
             | "bytes"
@@ -160,8 +164,11 @@ def create_symbolic_variable(d: Data) -> None:
             | "signature"
             | "string"
         ):
-            _variables.CURRENT_RUN.symbolic_variables[d.name] = z3.String(d.name)
+            return z3.String(d.name)
         case "bool" | "or" | "option" | "pair":
-            _variables.CURRENT_RUN.symbolic_variables[d.name] = z3.Bool(d.name)
+            return z3.Bool(d.name)
         case _:
-            pass
+            raise CustomException(
+                "unknown sym var type " + d.prim,
+                {"prim": d.prim, "value": d.value, "name": d.name},
+            )

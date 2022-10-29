@@ -105,6 +105,7 @@ def process_run():
             r.path_constraints.clear()
             r.steps.clear()
             r.executed = False
+            # Variable generation
             r.stack.append(copy.deepcopy(CR.concrete_variables["pair_0"]))
             r.concrete_variables = {r.stack[0].name: r.stack[0]}
             r.concrete_variables.update(
@@ -121,32 +122,19 @@ def process_run():
                     )
                 }
             )
+            # Value update
             for j in s.model():
+                if j.name() not in CR.symbolic_variables:  # type: ignore
+                    continue
                 if j.name().startswith("sv_"):  # type: ignore
                     match j.name().split("_")[1]:  # type: ignore
                         case "amount" | "balance":
-                            setattr(
-                                r.current_state,
-                                "amount",
-                                s.model()[CR.symbolic_variables[j.name()]].as_long(),  # type: ignore
-                            )
-                            setattr(
-                                r.current_state,
-                                "balance",
-                                s.model()[CR.symbolic_variables[j.name()]].as_long(),  # type: ignore
-                            )
+                            r.current_state.amount = s.model()[CR.symbolic_variables[j.name()]].as_long()  # type: ignore
+                            r.current_state.balance = s.model()[CR.symbolic_variables[j.name()]].as_long()  # type: ignore
                         case "now":
-                            setattr(
-                                r.current_state,
-                                "timestamp",
-                                s.model()[CR.symbolic_variables[j.name()]].as_long(),  # type: ignore
-                            )
+                            r.current_state.timestamp = s.model()[CR.symbolic_variables[j.name()]].as_long()  # type: ignore
                         case "sender" | "source":
-                            setattr(
-                                r.current_state,
-                                "address",
-                                str(s.model()[CR.symbolic_variables[j.name()]]),  # type: ignore
-                            )
+                            r.current_state.address = str(s.model()[CR.symbolic_variables[j.name()]])  # type: ignore
                         case _:
                             continue
                 match j.name().split("_")[0]:  # type: ignore
@@ -175,6 +163,8 @@ def process_run():
                         continue
                     case _:
                         r.concrete_variables[j.name()].value = [str(s.model()[CR.symbolic_variables[j.name()]])]  # type: ignore
+            r.ephemeral_predicates.clear()
+            r.ephemeral_variables.clear()
             r.symbolic_variables = copy.deepcopy(CR.symbolic_variables)
             r.path_constraints.append(_types.PathConstraint())
             r.path_constraints[0].input_variables = copy.deepcopy(r.symbolic_variables)
