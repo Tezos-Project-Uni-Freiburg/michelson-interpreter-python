@@ -2427,11 +2427,15 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
             CR.steps.append(step)
     else:  # EQ, GE, etc...
         checked_variables.append("0")
-    if any(
-        [
-            True if x in CPC.input_variables or x in CR.ephemeral_variables else False
-            for x in checked_variables
-        ]
+    if (
+        len(
+            [
+                True
+                for x in checked_variables
+                if str(x) in CPC.input_variables or str(x) in CR.ephemeral_variables
+            ]
+        )
+        > 0
     ):
         track = True
         CPC.predicates.append(op(checked_variables[-2], checked_variables[-1]))
