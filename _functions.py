@@ -2439,8 +2439,9 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
     ):
         track = True
         CPC.predicates.append(op(checked_variables[-2], checked_variables[-1]))
-        if any(
-            [True if x in CR.ephemeral_variables else False for x in checked_variables]
+        if (
+            len([True for x in checked_variables if str(x) in CR.ephemeral_variables])
+            > 0
         ):
             add = set()
             for i in CR.ephemeral_predicates:
