@@ -133,6 +133,7 @@ class Run:
     symbolic_variables: Dict[str, z3.ExprRef] = field(default_factory=dict)
     ephemeral_variables: Dict[str, z3.ExprRef] = field(default_factory=dict, init=False)
     ephemeral_predicates: List[Any] = field(default_factory=list, init=False)
+    creation_predicates: List[Any] = field(default_factory=list, init=False)
     executed: bool = field(default=False, init=False)
 
 

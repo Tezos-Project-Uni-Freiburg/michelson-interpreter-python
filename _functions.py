@@ -2443,7 +2443,7 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
             len([True for x in checked_variables if str(x) in CR.ephemeral_variables])
             > 0
         ):
-            add = set()
+            add_set = set()
             for i in CR.ephemeral_predicates:
                 e = set()
                 q = deque(i.children())
@@ -2453,10 +2453,12 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
                         q.extend(te.children())
                     e.add(te)
                 if any([True if x in e else False for x in checked_variables]):
-                    add.add(i)
-            local_ephemeral_predicates.extend(add)
+                    add_set.add(i)
+            local_ephemeral_predicates.extend(add_set)
             # CPC.predicates.extend(add)
-            CR.ephemeral_predicates = list(set(CR.ephemeral_predicates).difference(add))
+            CR.ephemeral_predicates = list(
+                set(CR.ephemeral_predicates).difference(add_set)
+            )
     ins_op, ins_if = l[0], l[1]
     # Execute EQ, GE, etc. here
     step = process_instruction(ins_op, CR.stack)

@@ -5,6 +5,7 @@ import copy
 import dataclasses
 import datetime
 import json
+import operator
 import re
 import subprocess
 import sys
@@ -82,20 +83,61 @@ def process_run():
     _variables.EXECUTED_RUNS.append(CR)
     s = z3.Solver()
     for i in CR.path_constraints[1:]:
+        predicate_set = set(i.predicates)
         if (
             len(
                 [
                     True
                     for x in _variables.EXECUTED_RUNS
-                    if set(i.predicates).issubset(
-                        set(x.current_path_constraint.predicates)
-                    )
+                    if predicate_set.issubset(set(x.current_path_constraint.predicates))
+                    or predicate_set.issubset(set(x.creation_predicates))
+                ]
+                + [
+                    True
+                    for x in _variables.REMAINING_RUNS
+                    if predicate_set.issubset(x.creation_predicates)
                 ]
             )
             != 0
         ):
             continue
         s.add(i.predicates)
+        # Adding neq cur.val.
+        e = set()
+        for j in i.predicates:
+            q = deque(j.children())
+            while len(q) != 0:
+                te = q.popleft()
+                if hasattr(te, "children") and len(te.children()) != 0:
+                    q.extend(te.children())
+                else:
+                    e.add(te)
+        for j in e:
+            if str(j) not in CR.concrete_variables:  # type: ignore
+                continue
+            match CR.concrete_variables[str(j)].prim:
+                case "int" | "mutez" | "nat" | "list" | "timestamp":
+                    v = z3.IntVal(int(CR.concrete_variables[str(j)].value[0]))
+                case (
+                    "address"
+                    | "bytes"
+                    | "chain_id"
+                    | "key"
+                    | "key_hash"
+                    | "signature"
+                    | "string"
+                ):
+                    v = z3.StringVal(CR.concrete_variables[str(j)].value[0])
+                case "bool" | "or" | "option" | "pair":
+                    v = z3.BoolVal(
+                        CR.concrete_variables[str(j)].value[0].lower() == "true"
+                    )
+                case _:
+                    raise _types.CustomException(
+                        "unknown sym var type " + str(j),
+                        {},
+                    )
+            s.add(operator.ne(j, v))
         i.satisfiable = True if s.check() == z3.sat else False
         if i.satisfiable:
             r = copy.deepcopy(CR)
@@ -105,6 +147,7 @@ def process_run():
             r.path_constraints.clear()
             r.steps.clear()
             r.executed = False
+            r.creation_predicates = list(s.assertions())  # type: ignore
             # Variable generation
             r.stack.append(copy.deepcopy(CR.concrete_variables["pair_0"]))
             r.concrete_variables = {r.stack[0].name: r.stack[0]}
@@ -325,7 +368,8 @@ def main(
         json.dumps(
             {
                 _variables.EXECUTED_RUNS.index(x): {
-                    "predicates": x.current_path_constraint.predicates,
+                    "creation_predicates": x.creation_predicates,
+                    "resulting_predicates": x.current_path_constraint.predicates,
                     "sat": x.current_path_constraint.satisfiable,
                     "reason": x.current_path_constraint.reason.args
                     if x.current_path_constraint.reason
