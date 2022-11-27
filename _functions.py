@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import ast
 import json
+
 import operator
 import re
 from collections import deque
@@ -13,7 +14,30 @@ from hashlib import blake2b, sha256, sha512
 from math import trunc
 from typing import Any, Deque, Dict, List
 
-import z3
+from pysmt.shortcuts import (
+    And,
+    Or,
+    GE,
+    GT,
+    LE,
+    LT,
+    Xor,
+    Plus,
+    Minus,
+    Times,
+    Div,
+    Not,
+    Symbol,
+    Int,
+    String,
+    Bool,
+    Equals,
+    NotEquals,
+    Solver,
+)
+from pysmt.typing import INT, STRING
+
+# import z3
 from base58 import b58encode_check
 
 import _variables
@@ -364,9 +388,9 @@ def applyADD(
     ):
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
         CR.ephemeral_predicates.append(
-            operator.eq(
+            Equals(
                 CR.ephemeral_variables[output.name],
-                operator.add(
+                Plus(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
                     else parameters[0].value[0],
@@ -424,15 +448,15 @@ def applyAND(
             ):
                 CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
                 CR.ephemeral_predicates.append(
-                    operator.eq(
+                    Equals(
                         CR.ephemeral_variables[output.name],
-                        z3.And(
+                        And(
                             CPC.input_variables[parameters[0].name]
                             if parameters[0].name in CPC.input_variables
-                            else z3.BoolVal(parameters[0].value[0].lower() == "true"),
+                            else Bool(parameters[0].value[0].lower() == "true"),
                             CPC.input_variables[parameters[1].name]
                             if parameters[1].name in CPC.input_variables
-                            else z3.BoolVal(parameters[1].value[0].lower() == "true"),
+                            else Bool(parameters[1].value[0].lower() == "true"),
                         ),
                     )
                 )
@@ -570,9 +594,9 @@ def applyCONCAT(
         ):
             CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
             CR.ephemeral_predicates.append(
-                operator.eq(
+                Equals(
                     CR.ephemeral_variables[output.name],
-                    operator.add(
+                    Plus(
                         CPC.input_variables[parameters[0].name]
                         if parameters[0].name in CPC.input_variables
                         else parameters[0].value[0],
@@ -727,36 +751,31 @@ def applyEDIV(
         if parameters[1].name in CPC.input_variables:
             CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
             CR.ephemeral_predicates.append(
-                operator.eq(
+                Equals(
                     CR.ephemeral_variables[output.name],
-                    (
-                        operator.eq(
-                            CPC.input_variables[parameters[1].name], z3.IntVal(0)
-                        )
-                    ),
+                    Equals(CPC.input_variables[parameters[1].name], Int(0)),
                 )
             )
         return output
     else:
         output.option_value = "Some"
 
-    s = z3.Solver()
-    z1_s, z2_s, q_s, r_s = z3.Ints("z1 z2 q r")
-    s.add(
-        q_s == z1_s / z2_s,
-        r_s == z1_s % z2_s,
-        z1_s == (q_s * z2_s) + r_s,
-        z1_s == z3.IntVal(z1),
-        z2_s == z3.IntVal(z2),
-    )
-    if s.check() == z3.sat:
-        q = s.model()[q_s].as_long()  # type: ignore
-        r = s.model()[r_s].as_long()  # type: ignore
-        s.reset()
-    else:
-        # These can be wrong, EDIV logic is weird
-        q = trunc(z1 / z2)
-        r = z1 % z2
+    with Solver(name="z3") as s:
+        q_s, r_s = (Symbol(i, INT) for i in ["q", "r"])
+        z1_s, z2_s = Int(z1), Int(z2)
+        s.add_assertions(
+            [
+                Equals(q_s, z1_s / z2_s),
+                Equals(z1_s, (q_s * z2_s) + r_s),
+            ]
+        )
+        if s.check_sat():
+            q = int(str(s.get_model()[q_s]))  # type: ignore
+            r = int(str(s.get_model()[r_s]))  # type: ignore
+        else:
+            # These can be wrong, EDIV logic is weird
+            q = trunc(z1 / z2)
+            r = z1 % z2
 
     t1 = ""
     t2 = ""
@@ -796,15 +815,11 @@ def applyEDIV(
             CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
             CR.ephemeral_predicates.extend(
                 [
-                    operator.eq(
+                    Equals(
                         CR.ephemeral_variables[output.name],
-                        (
-                            operator.ne(
-                                CPC.input_variables[parameters[1].name], z3.IntVal(0)
-                            )
-                        ),
+                        NotEquals(CPC.input_variables[parameters[1].name], Int(0)),
                     ),
-                    operator.eq(
+                    Equals(
                         CR.ephemeral_variables[p.name],
                         CR.ephemeral_variables[output.name],
                     ),
@@ -812,47 +827,36 @@ def applyEDIV(
             )
         else:
             CR.ephemeral_predicates.append(
-                operator.eq(
+                Equals(
                     CR.ephemeral_variables[p.name],
-                    z3.BoolVal(True),
+                    Bool(True),
                 )
             )
         CR.ephemeral_variables[q_p.name] = create_symbolic_variable(q_p)
         CR.ephemeral_variables[r_p.name] = create_symbolic_variable(r_p)
         CR.ephemeral_predicates.extend(
             [
-                operator.eq(
+                Equals(
                     CR.ephemeral_variables[q_p.name],
                     operator.truediv(
                         CPC.input_variables[parameters[0].name]
                         if parameters[0].name in CPC.input_variables
-                        else z3.IntVal(int(parameters[0].value[0])),
+                        else Int(int(parameters[0].value[0])),
                         CPC.input_variables[parameters[1].name]
                         if parameters[1].name in CPC.input_variables
-                        else z3.IntVal(int(parameters[1].value[0])),
+                        else Int(int(parameters[1].value[0])),
                     ),
                 ),
-                operator.eq(
-                    CR.ephemeral_variables[r_p.name],
-                    operator.mod(
-                        CPC.input_variables[parameters[0].name]
-                        if parameters[0].name in CPC.input_variables
-                        else z3.IntVal(int(parameters[0].value[0])),
-                        CPC.input_variables[parameters[1].name]
-                        if parameters[1].name in CPC.input_variables
-                        else z3.IntVal(int(parameters[1].value[0])),
-                    ),
-                ),
-                operator.eq(
+                Equals(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
-                    else z3.IntVal(int(parameters[0].value[0])),
-                    operator.add(
-                        operator.mul(
+                    else Int(int(parameters[0].value[0])),
+                    Plus(
+                        Times(
                             CR.ephemeral_variables[q_p.name],
                             CPC.input_variables[parameters[1].name]
                             if parameters[1].name in CPC.input_variables
-                            else z3.IntVal(int(parameters[1].value[0])),
+                            else Int(int(parameters[1].value[0])),
                         ),
                         CR.ephemeral_variables[r_p.name],
                     ),
@@ -920,11 +924,11 @@ def applyEQ(
         output.value.append("False")
     if parameters[0].name in CPC.input_variables:
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
-        op = operator.eq if output.value[0].lower() == "true" else operator.ne
+        op = Equals if output.value[0].lower() == "true" else NotEquals
         CR.ephemeral_predicates.append(
-            operator.eq(
+            Equals(
                 CR.ephemeral_variables[output.name],
-                op(CPC.input_variables[parameters[0].name], z3.IntVal(0)),
+                op(CPC.input_variables[parameters[0].name], Int(0)),
             )
         )
     return output
@@ -967,11 +971,11 @@ def applyGE(
         output.value.append("False")
     if parameters[0].name in CPC.input_variables:
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
-        op = operator.ge if output.value[0].lower() == "true" else operator.lt
+        op = GE if output.value[0].lower() == "true" else LT
         CR.ephemeral_predicates.append(
-            operator.eq(
+            Equals(
                 CR.ephemeral_variables[output.name],
-                op(CPC.input_variables[parameters[0].name], z3.IntVal(0)),  # type: ignore
+                op(CPC.input_variables[parameters[0].name], Int(0)),
             )
         )
     return output
@@ -1002,11 +1006,11 @@ def applyGT(
         output.value.append("False")
     if parameters[0].name in CPC.input_variables:
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
-        op = operator.gt if output.value[0].lower() == "true" else operator.le
+        op = GT if output.value[0].lower() == "true" else LE
         CR.ephemeral_predicates.append(
-            operator.eq(
+            Equals(
                 CR.ephemeral_variables[output.name],
-                op(CPC.input_variables[parameters[0].name], z3.IntVal(0)),  # type: ignore
+                op(CPC.input_variables[parameters[0].name], Int(0)),
             )
         )
     return output
@@ -1054,14 +1058,14 @@ def applyIF_CONS(
     if parameters[0].name in CPC.input_variables:
         CR.path_constraints.append(deepcopy(CPC))
         CPC.predicates.append(
-            operator.gt(CR.symbolic_variables[parameters[0].name], 0)  # type: ignore
+            GT(CR.symbolic_variables[parameters[0].name], 0)
             if branch == 0
-            else operator.eq(CR.symbolic_variables[parameters[0].name], 0)
+            else Equals(CR.symbolic_variables[parameters[0].name], 0)
         )
         CR.path_constraints[-1].predicates.append(
-            operator.eq(CR.symbolic_variables[parameters[0].name], 0)
+            Equals(CR.symbolic_variables[parameters[0].name], 0)
             if branch == 0
-            else operator.gt(CR.symbolic_variables[parameters[0].name], 0)  # type: ignore
+            else GT(CR.symbolic_variables[parameters[0].name], 0)
         )
 
     for i in flatten(instruction["args"][branch]):
@@ -1089,10 +1093,10 @@ def applyIF_LEFT(
         CPC.predicates.append(
             CR.symbolic_variables[parameters[0].name]
             if branch == 0
-            else z3.Not(CR.symbolic_variables[parameters[0].name])
+            else Not(CR.symbolic_variables[parameters[0].name])
         )
         CR.path_constraints[-1].predicates.append(
-            z3.Not(CR.symbolic_variables[parameters[0].name])
+            Not(CR.symbolic_variables[parameters[0].name])
             if branch == 0
             else CR.symbolic_variables[parameters[0].name]
         )
@@ -1132,24 +1136,24 @@ def applyIF_NONE(
         CR.path_constraints.append(deepcopy(CPC))
         if t[0]:
             CPC.predicates.append(
-                z3.Not(CR.symbolic_variables[parameters[0].name])
+                Not(CR.symbolic_variables[parameters[0].name])
                 if branch == 0
                 else CR.symbolic_variables[parameters[0].name]
             )
             CR.path_constraints[-1].predicates.append(
                 CR.symbolic_variables[parameters[0].name]
                 if branch == 0
-                else z3.Not(CR.symbolic_variables[parameters[0].name])
+                else Not(CR.symbolic_variables[parameters[0].name])
             )
         else:
             add = set()
             for i in CR.ephemeral_predicates:
                 e = set()
-                q = deque(i.children())
+                q = deque(i.args())
                 while len(q) != 0:
                     te = q.popleft()
-                    if hasattr(te, "children") and len(te.children()) != 0:
-                        q.extend(te.children())
+                    if hasattr(te, "args") and len(te.args()) != 0:
+                        q.extend(te.args())
                     e.add(te)
                 if CR.ephemeral_variables.get(parameters[0].name) in e:
                     add.add(i)
@@ -1188,7 +1192,7 @@ def applyINT(
     if parameters[0].name in CPC.input_variables:
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
         CR.ephemeral_predicates.append(
-            operator.eq(
+            Equals(
                 CR.ephemeral_variables[output.name],
                 CPC.input_variables[parameters[0].name],
             )
@@ -1210,13 +1214,9 @@ def applyISNAT(
         if parameters[0].name in CPC.input_variables:
             CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
             CR.ephemeral_predicates.append(
-                operator.eq(
+                Equals(
                     CR.ephemeral_variables[output.name],
-                    (
-                        operator.eq(
-                            CPC.input_variables[parameters[0].name], z3.IntVal(0)
-                        )
-                    ),
+                    Equals(CPC.input_variables[parameters[0].name], Int(0)),
                 )
             )
     else:
@@ -1227,15 +1227,11 @@ def applyISNAT(
             CR.ephemeral_variables[i.name] = create_symbolic_variable(i)
             CR.ephemeral_predicates.extend(
                 [
-                    operator.eq(
+                    Equals(
                         CR.ephemeral_variables[output.name],
-                        (
-                            operator.ne(
-                                CPC.input_variables[parameters[0].name], z3.IntVal(0)
-                            )
-                        ),
+                        NotEquals(CPC.input_variables[parameters[0].name], Int(0)),
                     ),
-                    operator.eq(
+                    Equals(
                         CR.ephemeral_variables[i.name],
                         CPC.input_variables[parameters[0].name],
                     ),
@@ -1275,11 +1271,11 @@ def applyLE(
         output.value.append("False")
     if parameters[0].name in CPC.input_variables:
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
-        op = operator.le if output.value[0].lower() == "true" else operator.gt
+        op = LE if output.value[0].lower() == "true" else GT
         CR.ephemeral_predicates.append(
-            operator.eq(
+            Equals(
                 CR.ephemeral_variables[output.name],
-                op(CPC.input_variables[parameters[0].name], z3.IntVal(0)),  # type: ignore
+                op(CPC.input_variables[parameters[0].name], Int(0)),
             )
         )
     return output
@@ -1321,20 +1317,20 @@ def applyLOOP(
             if v:
                 CPC.predicates.append(CR.symbolic_variables[top.name])
             else:
-                CPC.predicates.append(z3.Not(CR.symbolic_variables[top.name]))
+                CPC.predicates.append(Not(CR.symbolic_variables[top.name]))
             CR.path_constraints.append(deepcopy(CPC))
             CR.path_constraints[-1].predicates.append(
-                z3.Not(CR.path_constraints[-1].predicates.pop())
+                Not(CR.path_constraints[-1].predicates.pop())
             )
         else:
             add = set()
             for i in CR.ephemeral_predicates:
                 e = set()
-                q = deque(i.children())
+                q = deque(i.args())
                 while len(q) != 0:
                     te = q.popleft()
-                    if hasattr(te, "children") and len(te.children()) != 0:
-                        q.extend(te.children())
+                    if hasattr(te, "args") and len(te.args()) != 0:
+                        q.extend(te.args())
                     e.add(te)
                 if CR.ephemeral_variables.get(top.name) in e:
                     add.add(i)
@@ -1385,10 +1381,10 @@ def applyLOOP_LEFT(
         if v:
             CPC.predicates.append(CR.symbolic_variables[top.name])
         else:
-            CPC.predicates.append(z3.Not(CR.symbolic_variables[top.name]))
+            CPC.predicates.append(Not(CR.symbolic_variables[top.name]))
         CR.path_constraints.append(deepcopy(CPC))
         CR.path_constraints[-1].predicates.append(
-            z3.Not(CR.path_constraints[-1].predicates.pop())
+            Not(CR.path_constraints[-1].predicates.pop())
         )
     while v:
         for i in flatten(instruction["args"]):
@@ -1454,11 +1450,11 @@ def applyLT(
         output.value.append("False")
     if parameters[0].name in CPC.input_variables:
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
-        op = operator.lt if output.value[0].lower() == "true" else operator.ge
+        op = LT if output.value[0].lower() == "true" else GE
         CR.ephemeral_predicates.append(
-            operator.eq(
+            Equals(
                 CR.ephemeral_variables[output.name],
-                op(CPC.input_variables[parameters[0].name], z3.IntVal(0)),  # type: ignore
+                op(CPC.input_variables[parameters[0].name], Int(0)),
             )
         )
     return output
@@ -1522,15 +1518,15 @@ def applyMUL(
     ):
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
         CR.ephemeral_predicates.append(
-            operator.eq(
+            Equals(
                 CR.ephemeral_variables[output.name],
-                operator.mul(
+                Times(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
-                    else z3.IntVal(z1),
+                    else Int(z1),
                     CPC.input_variables[parameters[1].name]
                     if parameters[1].name in CPC.input_variables
-                    else z3.IntVal(z2),
+                    else Int(z2),
                 ),
             )
         )
@@ -1548,7 +1544,7 @@ def applyNEG(
     if parameters[0].name in CPC.input_variables:
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
         CR.ephemeral_predicates.append(
-            operator.eq(
+            Equals(
                 CR.ephemeral_variables[output.name],
                 operator.neg(CPC.input_variables[parameters[0].name]),  # type: ignore
             )
@@ -1569,11 +1565,11 @@ def applyNEQ(
         output.value.append("False")
     if parameters[0].name in CPC.input_variables:
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
-        op = operator.ne if output.value[0].lower() == "true" else operator.eq
+        op = NotEquals if output.value[0].lower() == "true" else Equals
         CR.ephemeral_predicates.append(
-            operator.eq(
+            Equals(
                 CR.ephemeral_variables[output.name],
-                op(CPC.input_variables[parameters[0].name], z3.IntVal(0)),  # type: ignore
+                op(CPC.input_variables[parameters[0].name], Int(0)),
             )
         )
     return output
@@ -1620,7 +1616,7 @@ def applyNOT(
             if parameters[0].name in CPC.input_variables:
                 CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
                 CR.ephemeral_predicates.append(
-                    operator.eq(
+                    Equals(
                         CR.ephemeral_variables[output.name],
                         operator.neg(CPC.input_variables[parameters[0].name]),  # type: ignore
                     )
@@ -1671,15 +1667,15 @@ def applyOR(
         ):
             CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
             CR.ephemeral_predicates.append(
-                operator.eq(
+                Equals(
                     CR.ephemeral_variables[output.name],
-                    z3.Or(
+                    Or(
                         CPC.input_variables[parameters[0].name]
                         if parameters[0].name in CPC.input_variables
-                        else z3.BoolVal(parameters[0].value[0].lower() == "true"),
+                        else Bool(parameters[0].value[0].lower() == "true"),
                         CPC.input_variables[parameters[1].name]
                         if parameters[1].name in CPC.input_variables
-                        else z3.BoolVal(parameters[1].value[0].lower() == "true"),
+                        else Bool(parameters[1].value[0].lower() == "true"),
                     ),
                 )
             )
@@ -1930,9 +1926,9 @@ def applySUB(
     ):
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
         CR.ephemeral_predicates.append(
-            operator.eq(
+            Equals(
                 CR.ephemeral_variables[output.name],
-                operator.sub(
+                Minus(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
                     else parameters[0].value[0],
@@ -2046,15 +2042,15 @@ def applyXOR(
         ):
             CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
             CR.ephemeral_predicates.append(
-                operator.eq(
+                Equals(
                     CR.ephemeral_variables[output.name],
-                    z3.Xor(
+                    Xor(
                         CPC.input_variables[parameters[0].name]
                         if parameters[0].name in CPC.input_variables
-                        else z3.BoolVal(parameters[0].value[0].lower() == "true"),
+                        else Bool(parameters[0].value[0].lower() == "true"),
                         CPC.input_variables[parameters[1].name]
                         if parameters[1].name in CPC.input_variables
-                        else z3.BoolVal(parameters[1].value[0].lower() == "true"),
+                        else Bool(parameters[1].value[0].lower() == "true"),
                     ),
                 )
             )
@@ -2446,11 +2442,11 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
             add_set = set()
             for i in CR.ephemeral_predicates:
                 e = set()
-                q = deque(i.children())
+                q = deque(i.args())
                 while len(q) != 0:
                     te = q.popleft()
-                    if hasattr(te, "children") and len(te.children()) != 0:
-                        q.extend(te.children())
+                    if hasattr(te, "args") and len(te.args()) != 0:
+                        q.extend(te.args())
                     e.add(te)
                 if any([True if x in e else False for x in checked_variables]):
                     add_set.add(i)
@@ -2470,16 +2466,16 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
         CR.path_constraints.append(deepcopy(CPC))
         if CR.stack[-1].value[0].lower() == "true":
             CR.path_constraints[-1].predicates.append(
-                z3.Not(CR.path_constraints[-1].predicates.pop())
+                Not(CR.path_constraints[-1].predicates.pop())
             )
         else:
-            CPC.predicates.append(z3.Not(CPC.predicates.pop()))
+            CPC.predicates.append(Not(CPC.predicates.pop()))
         # Adding all ephemeral predicates and repeating fork & negate
         for i in local_ephemeral_predicates:
             CPC.predicates.append(i)
             CR.path_constraints.append(deepcopy(CPC))
             CR.path_constraints[-1].predicates.append(
-                z3.Not(CR.path_constraints[-1].predicates.pop())
+                Not(CR.path_constraints[-1].predicates.pop())
             )
     # Now processing the actual IF
     _ = process_instruction(ins_if, CR.stack)

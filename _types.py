@@ -7,7 +7,9 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Deque, Dict, List, Set
 
-import z3
+import pysmt.fnode
+from pysmt.shortcuts import Symbol
+from pysmt.typing import INT, STRING
 
 import _variables
 
@@ -113,7 +115,7 @@ class Step:
 
 @dataclass
 class PathConstraint:
-    input_variables: Dict[str, z3.ExprRef] = field(default_factory=dict)
+    input_variables: Dict[str, pysmt.fnode.FNode] = field(default_factory=dict)
     predicates: List[Any] = field(default_factory=list)
     processed: bool = False
     satisfiable: bool = False
@@ -130,8 +132,10 @@ class Run:
     steps: List[Step] = field(default_factory=list)
     variable_names: Dict[str, Set[int]] = field(default_factory=dict)
     concrete_variables: Dict[str, Data] = field(default_factory=dict)
-    symbolic_variables: Dict[str, z3.ExprRef] = field(default_factory=dict)
-    ephemeral_variables: Dict[str, z3.ExprRef] = field(default_factory=dict, init=False)
+    symbolic_variables: Dict[str, pysmt.fnode.FNode] = field(default_factory=dict)
+    ephemeral_variables: Dict[str, pysmt.fnode.FNode] = field(
+        default_factory=dict, init=False
+    )
     ephemeral_predicates: List[Any] = field(default_factory=list, init=False)
     creation_predicates: List[Any] = field(default_factory=list, init=False)
     executed: bool = field(default=False, init=False)
@@ -152,10 +156,10 @@ def create_variable_name(name: str) -> str:
     return name + "_" + str(n)
 
 
-def create_symbolic_variable(d: Data) -> z3.ExprRef:
+def create_symbolic_variable(d: Data) -> pysmt.fnode.FNode:
     match d.prim:
         case "int" | "mutez" | "nat" | "list" | "timestamp":
-            return z3.Int(d.name)
+            return Symbol(d.name, INT)
         case (
             "address"
             | "bytes"
@@ -165,9 +169,9 @@ def create_symbolic_variable(d: Data) -> z3.ExprRef:
             | "signature"
             | "string"
         ):
-            return z3.String(d.name)
+            return Symbol(d.name, STRING)
         case "bool" | "or" | "option" | "pair":
-            return z3.Bool(d.name)
+            return Symbol(d.name)
         case _:
             raise CustomException(
                 "unknown sym var type " + d.prim,

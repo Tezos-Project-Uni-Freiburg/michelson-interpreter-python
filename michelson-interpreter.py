@@ -5,15 +5,14 @@ import copy
 import dataclasses
 import datetime
 import json
-import operator
 import re
 import subprocess
 import sys
 from collections import deque
-from typing import Any, Dict
 
 import click
-import z3
+import pysmt.fnode
+from pysmt.shortcuts import Bool, Int, String, Solver, Symbol, NotEquals
 
 import _functions
 import _types
@@ -81,7 +80,7 @@ def process_run():
     CR = _variables.CURRENT_RUN
     _variables.REMAINING_RUNS.remove(CR)
     _variables.EXECUTED_RUNS.append(CR)
-    s = z3.Solver()
+    s = Solver(name="z3")
     for i in CR.path_constraints[1:]:
         predicate_set = set(i.predicates)
         if (
@@ -101,14 +100,14 @@ def process_run():
             != 0
         ):
             continue
-        s.add(i.predicates)
+        s.add_assertions(i.predicates)
         # Adding neq cur.val.
         e = set()
         for j in i.predicates:
-            q = deque(j.children())
+            q = deque(j.args())
             while len(q) != 0:
                 te = q.popleft()
-                if hasattr(te, "children") and len(te.children()) != 0:
+                if hasattr(te, "args") and len(te.args()) != 0:
                     q.extend(te.children())
                 else:
                     e.add(te)
@@ -117,7 +116,7 @@ def process_run():
                 continue
             match CR.concrete_variables[str(j)].prim:
                 case "int" | "mutez" | "nat" | "list" | "timestamp":
-                    v = z3.IntVal(int(CR.concrete_variables[str(j)].value[0]))
+                    v = Int(int(CR.concrete_variables[str(j)].value[0]))
                 case (
                     "address"
                     | "bytes"
@@ -127,18 +126,16 @@ def process_run():
                     | "signature"
                     | "string"
                 ):
-                    v = z3.StringVal(CR.concrete_variables[str(j)].value[0])
+                    v = String(CR.concrete_variables[str(j)].value[0])
                 case "bool" | "or" | "option" | "pair":
-                    v = z3.BoolVal(
-                        CR.concrete_variables[str(j)].value[0].lower() == "true"
-                    )
+                    v = Bool(CR.concrete_variables[str(j)].value[0].lower() == "true")
                 case _:
                     raise _types.CustomException(
                         "unknown sym var type " + str(j),
                         {},
                     )
-            s.add(operator.ne(j, v))
-        i.satisfiable = True if s.check() == z3.sat else False
+            s.add_assertion(NotEquals(j, v))
+        i.satisfiable = s.check_sat()
         if i.satisfiable:
             r = copy.deepcopy(CR)
             _variables.REMAINING_RUNS.append(r)
@@ -147,7 +144,7 @@ def process_run():
             r.path_constraints.clear()
             r.steps.clear()
             r.executed = False
-            r.creation_predicates = list(s.assertions())  # type: ignore
+            r.creation_predicates = list(s.assertions)  # type: ignore
             # Variable generation
             r.stack.append(copy.deepcopy(CR.concrete_variables["pair_0"]))
             r.concrete_variables = {r.stack[0].name: r.stack[0]}
@@ -166,46 +163,78 @@ def process_run():
                 }
             )
             # Value update
-            for j in s.model():
-                if j.name() not in CR.symbolic_variables:  # type: ignore
+            for j in s.get_model():
+                if j.symbol_name() not in CR.symbolic_variables:
                     continue
-                if j.name().startswith("sv_"):  # type: ignore
-                    match j.name().split("_")[1]:  # type: ignore
+                if j.symbol_name().startswith("sv_"):
+                    match j.symbol_name().split("_")[1]:
                         case "amount" | "balance":
-                            r.current_state.amount = s.model()[CR.symbolic_variables[j.name()]].as_long()  # type: ignore
-                            r.current_state.balance = s.model()[CR.symbolic_variables[j.name()]].as_long()  # type: ignore
+                            r.current_state.amount = int(
+                                str(
+                                    s.get_model()[
+                                        CR.symbolic_variables[j.symbol_name()]
+                                    ]
+                                )
+                            )
+                            r.current_state.balance = int(
+                                str(
+                                    s.get_model()[
+                                        CR.symbolic_variables[j.symbol_name()]
+                                    ]
+                                )
+                            )
                         case "now":
-                            r.current_state.timestamp = s.model()[CR.symbolic_variables[j.name()]].as_long()  # type: ignore
+                            r.current_state.timestamp = int(
+                                str(
+                                    s.get_model()[
+                                        CR.symbolic_variables[j.symbol_name()]
+                                    ]
+                                )
+                            )
                         case "sender" | "source":
-                            r.current_state.address = str(s.model()[CR.symbolic_variables[j.name()]])  # type: ignore
+                            r.current_state.address = str(
+                                s.get_model()[CR.symbolic_variables[j.symbol_name()]]
+                            )
                         case _:
                             continue
-                match j.name().split("_")[0]:  # type: ignore
+                match j.symbol_name().split("_")[0]:
                     case "or":
                         # _variables.CREATE_VARIABLE = True
-                        if str(s.model()[CR.symbolic_variables[j.name()]]).lower() == "true":  # type: ignore
-                            r.concrete_variables[j.name()].or_value = "Left"  # type: ignore
+                        if (
+                            str(
+                                s.get_model()[CR.symbolic_variables[j.symbol_name()]]
+                            ).lower()
+                            == "true"
+                        ):
+                            r.concrete_variables[j.symbol_name()].or_value = "Left"
                             # r.concrete_variables[j.name()].value = [_types.Data(r.concrete_variables[j.name()].or_type[0], ["0"], j.name())]  # type: ignore
                         else:
-                            r.concrete_variables[j.name()].or_value = "Right"  # type: ignore
+                            r.concrete_variables[j.symbol_name()].or_value = "Right"
                             # r.concrete_variables[j.name()].value = [_types.Data(r.concrete_variables[j.name()].or_type[1], ["0"], j.name())]  # type: ignore
                         # _variables.CREATE_VARIABLE = False
                     case "option":
-                        if str(s.model()[CR.symbolic_variables[j.name()]]).lower() == "true":  # type: ignore
-                            r.concrete_variables[j.name()].option_value = "None"  # type: ignore
-                            for k in r.concrete_variables[j.name()].value:  # type: ignore
-                                r.concrete_variables.pop(k.name)
-                                r.symbolic_variables.pop(k.name)
-                            r.concrete_variables[j.name()].value.clear()  # type: ignore
+                        if (
+                            str(
+                                s.get_model()[CR.symbolic_variables[j.symbol_name()]]
+                            ).lower()
+                            == "true"
+                        ):
+                            r.concrete_variables[j.symbol_name()].option_value = "None"
+                            for k in r.concrete_variables[j.symbol_name()].value:
+                                r.concrete_variables.pop(k.symbol_name)
+                                r.symbolic_variables.pop(k.symbol_name)
+                            r.concrete_variables[j.symbol_name()].value.clear()
                         else:
-                            r.concrete_variables[j.name()].option_value = "Some"  # type: ignore
+                            r.concrete_variables[j.symbol_name()].option_value = "Some"
                             # _variables.CREATE_VARIABLE = True
                             # r.concrete_variables[j.name()].value = [_types.Data(r.concrete_variables[j.name()].option_type[0], [], j.name())]  # type: ignore
                             # _variables.CREATE_VARIABLE = False
                     case "pair":
                         continue
                     case _:
-                        r.concrete_variables[j.name()].value = [str(s.model()[CR.symbolic_variables[j.name()]])]  # type: ignore
+                        r.concrete_variables[j.symbol_name()].value = [
+                            str(s.get_model()[CR.symbolic_variables[j.symbol_name()]])
+                        ]
             r.ephemeral_predicates.clear()
             r.ephemeral_variables.clear()
             r.symbolic_variables = copy.deepcopy(CR.symbolic_variables)
@@ -324,13 +353,13 @@ def main(
     ## Adding the initial `pair` as a bool here
     CPC.input_variables = {
         CR.stack[0].name: CR.symbolic_variables.get(
-            CR.stack[0].name, z3.Bool(CR.stack[0].name)
+            CR.stack[0].name, Symbol(CR.stack[0].name)
         )
     }
     ## + adding whatever's inside that `pair` + state variables
     CPC.input_variables.update(
         {
-            x.name: CR.symbolic_variables.get(x.name, z3.Bool(x.name))
+            x.name: CR.symbolic_variables[x.name]
             for x in _functions.find_nested(CR.stack[0])
             + [
                 _functions.applyAMOUNT({}, None, deque()),
@@ -377,9 +406,7 @@ def main(
                 }
                 for x in _variables.EXECUTED_RUNS
             },
-            default=lambda x: str(x)
-            if isinstance(x, z3.Z3PPObject) and x.use_pp()
-            else x,
+            default=lambda x: str(x) if isinstance(x, pysmt.fnode.FNode) else x,
         )
     )
 
