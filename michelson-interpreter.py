@@ -12,7 +12,7 @@ from collections import deque
 
 import click
 import pysmt.fnode
-from pysmt.shortcuts import Bool, Int, String, Solver, Symbol, NotEquals
+from pysmt.shortcuts import Bool, Int, NotEquals, Solver, String, Symbol, get_env
 
 import _functions
 import _types
@@ -81,28 +81,37 @@ def process_run():
     _variables.REMAINING_RUNS.remove(CR)
     _variables.EXECUTED_RUNS.append(CR)
     for i in CR.path_constraints[1:]:
-        with Solver(name="z3") as s:
+        with Solver() as s:
+            fm = get_env().formula_manager
             predicate_set = set(i.predicates)
+            s.add_assertions(i.predicates)
             if (
                 len(
                     [
                         True
                         for x in _variables.EXECUTED_RUNS
                         if predicate_set.issubset(
-                            set(x.current_path_constraint.predicates)
+                            {
+                                fm.normalize(j)
+                                for j in x.current_path_constraint.predicates
+                            }
                         )
-                        or predicate_set.issubset(set(x.creation_predicates))
+                        or predicate_set.issubset(
+                            {fm.normalize(j) for j in x.creation_predicates}
+                        )
                     ]
                     + [
                         True
                         for x in _variables.REMAINING_RUNS
-                        if predicate_set.issubset(x.creation_predicates)
+                        if predicate_set.issubset(
+                            {fm.normalize(j) for j in x.creation_predicates}
+                        )
                     ]
                 )
                 != 0
             ):
                 continue
-            s.add_assertions(i.predicates)
+            # s.add_assertions(i.predicates)
             # Adding neq cur.val.
             e = set()
             for j in i.predicates:
