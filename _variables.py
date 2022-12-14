@@ -1,8 +1,9 @@
 #!/usr/bin/python3
 from __future__ import annotations
 
-import operator
 from typing import List
+
+from pysmt.shortcuts import GE, GT, LE, LT, EqualsOrIff, NotEquals
 
 from _types import Run
 
@@ -15,10 +16,10 @@ CREATE_VARIABLE: bool = False
 
 # Constants
 OPS = {
-    "EQ": operator.eq,
-    "GE": operator.ge,
-    "GT": operator.gt,
-    "LE": operator.le,
-    "LT": operator.lt,
-    "NEQ": operator.ne,
+    "EQ": EqualsOrIff,
+    "GE": GE,
+    "GT": GT,
+    "LE": LE,
+    "LT": LT,
+    "NEQ": NotEquals,
 }

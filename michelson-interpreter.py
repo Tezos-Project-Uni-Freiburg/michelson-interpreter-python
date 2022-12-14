@@ -80,182 +80,164 @@ def process_run():
     CR = _variables.CURRENT_RUN
     _variables.REMAINING_RUNS.remove(CR)
     _variables.EXECUTED_RUNS.append(CR)
-    s = Solver(name="z3")
     for i in CR.path_constraints[1:]:
-        predicate_set = set(i.predicates)
-        if (
-            len(
-                [
-                    True
-                    for x in _variables.EXECUTED_RUNS
-                    if predicate_set.issubset(set(x.current_path_constraint.predicates))
-                    or predicate_set.issubset(set(x.creation_predicates))
-                ]
-                + [
-                    True
-                    for x in _variables.REMAINING_RUNS
-                    if predicate_set.issubset(x.creation_predicates)
-                ]
-            )
-            != 0
-        ):
-            continue
-        s.add_assertions(i.predicates)
-        # Adding neq cur.val.
-        e = set()
-        for j in i.predicates:
-            q = deque(j.args())
-            while len(q) != 0:
-                te = q.popleft()
-                if hasattr(te, "args") and len(te.args()) != 0:
-                    q.extend(te.children())
-                else:
-                    e.add(te)
-        for j in e:
-            if str(j) not in CR.concrete_variables:  # type: ignore
-                continue
-            match CR.concrete_variables[str(j)].prim:
-                case "int" | "mutez" | "nat" | "list" | "timestamp":
-                    v = Int(int(CR.concrete_variables[str(j)].value[0]))
-                case (
-                    "address"
-                    | "bytes"
-                    | "chain_id"
-                    | "key"
-                    | "key_hash"
-                    | "signature"
-                    | "string"
-                ):
-                    v = String(CR.concrete_variables[str(j)].value[0])
-                case "bool" | "or" | "option" | "pair":
-                    v = Bool(CR.concrete_variables[str(j)].value[0].lower() == "true")
-                case _:
-                    raise _types.CustomException(
-                        "unknown sym var type " + str(j),
-                        {},
-                    )
-            s.add_assertion(NotEquals(j, v))
-        i.satisfiable = s.check_sat()
-        if i.satisfiable:
-            r = copy.deepcopy(CR)
-            _variables.REMAINING_RUNS.append(r)
-            # Preprocessing
-            r.stack.clear()
-            r.path_constraints.clear()
-            r.steps.clear()
-            r.executed = False
-            r.creation_predicates = list(s.assertions)  # type: ignore
-            # Variable generation
-            r.stack.append(copy.deepcopy(CR.concrete_variables["pair_0"]))
-            r.concrete_variables = {r.stack[0].name: r.stack[0]}
-            r.concrete_variables.update(
-                {x.name: x for x in _functions.find_nested(r.stack[0])}
-            )
-            r.concrete_variables.update(
-                {
-                    x: copy.deepcopy(CR.concrete_variables[x])
-                    for x in CR.concrete_variables.keys()
-                    if x.startswith("sv_")
-                    or (
-                        CR.concrete_variables[x].parent
-                        and CR.concrete_variables[x].parent.startswith("sv_")  # type: ignore
-                    )
-                }
-            )
-            # Value update
-            for j in s.get_model():
-                if j.symbol_name() not in CR.symbolic_variables:
-                    continue
-                if j.symbol_name().startswith("sv_"):
-                    match j.symbol_name().split("_")[1]:
-                        case "amount" | "balance":
-                            r.current_state.amount = int(
-                                str(
-                                    s.get_model()[
-                                        CR.symbolic_variables[j.symbol_name()]
-                                    ]
-                                )
-                            )
-                            r.current_state.balance = int(
-                                str(
-                                    s.get_model()[
-                                        CR.symbolic_variables[j.symbol_name()]
-                                    ]
-                                )
-                            )
-                        case "now":
-                            r.current_state.timestamp = int(
-                                str(
-                                    s.get_model()[
-                                        CR.symbolic_variables[j.symbol_name()]
-                                    ]
-                                )
-                            )
-                        case "sender" | "source":
-                            r.current_state.address = str(
-                                s.get_model()[CR.symbolic_variables[j.symbol_name()]]
-                            )
-                        case _:
-                            continue
-                match j.symbol_name().split("_")[0]:
-                    case "or":
-                        # _variables.CREATE_VARIABLE = True
-                        if (
-                            str(
-                                s.get_model()[CR.symbolic_variables[j.symbol_name()]]
-                            ).lower()
-                            == "true"
-                        ):
-                            r.concrete_variables[j.symbol_name()].or_value = "Left"
-                            # r.concrete_variables[j.name()].value = [_types.Data(r.concrete_variables[j.name()].or_type[0], ["0"], j.name())]  # type: ignore
-                        else:
-                            r.concrete_variables[j.symbol_name()].or_value = "Right"
-                            # r.concrete_variables[j.name()].value = [_types.Data(r.concrete_variables[j.name()].or_type[1], ["0"], j.name())]  # type: ignore
-                        # _variables.CREATE_VARIABLE = False
-                    case "option":
-                        if (
-                            str(
-                                s.get_model()[CR.symbolic_variables[j.symbol_name()]]
-                            ).lower()
-                            == "true"
-                        ):
-                            r.concrete_variables[j.symbol_name()].option_value = "None"
-                            for k in r.concrete_variables[j.symbol_name()].value:
-                                r.concrete_variables.pop(k.symbol_name)
-                                r.symbolic_variables.pop(k.symbol_name)
-                            r.concrete_variables[j.symbol_name()].value.clear()
-                        else:
-                            r.concrete_variables[j.symbol_name()].option_value = "Some"
-                            # _variables.CREATE_VARIABLE = True
-                            # r.concrete_variables[j.name()].value = [_types.Data(r.concrete_variables[j.name()].option_type[0], [], j.name())]  # type: ignore
-                            # _variables.CREATE_VARIABLE = False
-                    case "pair":
-                        continue
-                    case _:
-                        r.concrete_variables[j.symbol_name()].value = [
-                            str(s.get_model()[CR.symbolic_variables[j.symbol_name()]])
-                        ]
-            r.ephemeral_predicates.clear()
-            r.ephemeral_variables.clear()
-            r.symbolic_variables = copy.deepcopy(CR.symbolic_variables)
-            r.path_constraints.append(_types.PathConstraint())
-            r.path_constraints[0].input_variables = copy.deepcopy(r.symbolic_variables)
-            r.current_path_constraint = r.path_constraints[0]
-            r.variable_names = {
-                x: {
-                    int(y.split("_")[1])
-                    for y in r.current_path_constraint.input_variables.keys()
-                    if y.startswith(x)
-                }
-                for x in set(
+        with Solver(name="z3") as s:
+            predicate_set = set(i.predicates)
+            if (
+                len(
                     [
-                        z.split("_")[0]
-                        for z in r.current_path_constraint.input_variables.keys()
-                        if not z.startswith("sv_")
+                        True
+                        for x in _variables.EXECUTED_RUNS
+                        if predicate_set.issubset(
+                            set(x.current_path_constraint.predicates)
+                        )
+                        or predicate_set.issubset(set(x.creation_predicates))
+                    ]
+                    + [
+                        True
+                        for x in _variables.REMAINING_RUNS
+                        if predicate_set.issubset(x.creation_predicates)
                     ]
                 )
-            }
-        s.reset()
+                != 0
+            ):
+                continue
+            s.add_assertions(i.predicates)
+            # Adding neq cur.val.
+            e = set()
+            for j in i.predicates:
+                q = deque()
+                q.append(j)
+                while len(q) != 0:
+                    te = q.popleft()
+                    if hasattr(te, "args") and len(te.args()) != 0:
+                        q.extend(te.args())
+                    else:
+                        e.add(te)
+            for j in e:
+                if str(j) not in CR.concrete_variables:  # type: ignore
+                    continue
+                match CR.concrete_variables[str(j)].prim:
+                    case "int" | "mutez" | "nat" | "list" | "timestamp":
+                        v = Int(int(CR.concrete_variables[str(j)].value[0]))
+                    case (
+                        "address"
+                        | "bytes"
+                        | "chain_id"
+                        | "key"
+                        | "key_hash"
+                        | "signature"
+                        | "string"
+                    ):
+                        v = String(CR.concrete_variables[str(j)].value[0])
+                    case "bool" | "or" | "option" | "pair":
+                        v = Bool(
+                            CR.concrete_variables[str(j)].value[0].lower() == "true"
+                        )
+                    case _:
+                        raise _types.CustomException(
+                            "unknown sym var type " + str(j),
+                            {},
+                        )
+                s.add_assertion(NotEquals(j, v))
+            i.satisfiable = s.check_sat()
+            if i.satisfiable:
+                r = copy.deepcopy(CR)
+                _variables.REMAINING_RUNS.append(r)
+                # Preprocessing
+                r.stack.clear()
+                r.path_constraints.clear()
+                r.steps.clear()
+                r.executed = False
+                r.creation_predicates = list(s.assertions)  # type: ignore
+                # Variable generation
+                r.stack.append(copy.deepcopy(CR.concrete_variables["pair_0"]))
+                r.concrete_variables = {r.stack[0].name: r.stack[0]}
+                r.concrete_variables.update(
+                    {x.name: x for x in _functions.find_nested(r.stack[0])}
+                )
+                r.concrete_variables.update(
+                    {
+                        x: copy.deepcopy(CR.concrete_variables[x])
+                        for x in CR.concrete_variables.keys()
+                        if x.startswith("sv_")
+                        or (
+                            CR.concrete_variables[x].parent
+                            and CR.concrete_variables[x].parent.startswith("sv_")  # type: ignore
+                        )
+                    }
+                )
+                # Value update
+                for j in s.get_model():
+                    if j[0].symbol_name() not in CR.symbolic_variables:
+                        continue
+                    if j[0].symbol_name().startswith("sv_"):
+                        match j[0].symbol_name().split("_")[1]:
+                            case "amount" | "balance":
+                                r.current_state.amount = int(str(j[1]))
+                                r.current_state.balance = int(str(j[1]))
+                            case "now":
+                                r.current_state.timestamp = int(str(j[1]))
+                            case "sender" | "source":
+                                r.current_state.address = str(j[1])
+                            case _:
+                                continue
+                    match j[0].symbol_name().split("_")[0]:
+                        case "or":
+                            # _variables.CREATE_VARIABLE = True
+                            if str(j[1]).lower() == "true":
+                                r.concrete_variables[
+                                    j[0].symbol_name()
+                                ].or_value = "Left"
+                                # r.concrete_variables[j.name()].value = [_types.Data(r.concrete_variables[j.name()].or_type[0], ["0"], j.name())]  # type: ignore
+                            else:
+                                r.concrete_variables[
+                                    j[0].symbol_name()
+                                ].or_value = "Right"
+                                # r.concrete_variables[j.name()].value = [_types.Data(r.concrete_variables[j.name()].or_type[1], ["0"], j.name())]  # type: ignore
+                            # _variables.CREATE_VARIABLE = False
+                        case "option":
+                            if str(j[1]).lower() == "true":
+                                r.concrete_variables[
+                                    j[0].symbol_name()
+                                ].option_value = "None"
+                                for k in r.concrete_variables[j[0].symbol_name()].value:
+                                    r.concrete_variables.pop(k.symbol_name)
+                                    r.symbolic_variables.pop(k.symbol_name)
+                                r.concrete_variables[j[0].symbol_name()].value.clear()
+                            else:
+                                r.concrete_variables[
+                                    j[0].symbol_name()
+                                ].option_value = "Some"
+                                # _variables.CREATE_VARIABLE = True
+                                # r.concrete_variables[j.name()].value = [_types.Data(r.concrete_variables[j.name()].option_type[0], [], j.name())]  # type: ignore
+                                # _variables.CREATE_VARIABLE = False
+                        case "pair":
+                            continue
+                        case _:
+                            r.concrete_variables[j[0].symbol_name()].value = [str(j[1])]
+                r.ephemeral_predicates.clear()
+                r.ephemeral_variables.clear()
+                r.symbolic_variables = copy.deepcopy(CR.symbolic_variables)
+                r.path_constraints.append(_types.PathConstraint())
+                r.path_constraints[0].input_variables = copy.deepcopy(
+                    r.symbolic_variables
+                )
+                r.current_path_constraint = r.path_constraints[0]
+                r.variable_names = {
+                    x: {
+                        int(y.split("_")[1])
+                        for y in r.current_path_constraint.input_variables.keys()
+                        if y.startswith(x)
+                    }
+                    for x in set(
+                        [
+                            z.split("_")[0]
+                            for z in r.current_path_constraint.input_variables.keys()
+                            if not z.startswith("sv_")
+                        ]
+                    )
+                }
 
 
 @click.command()

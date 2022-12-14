@@ -14,6 +14,7 @@ from hashlib import blake2b, sha256, sha512
 from math import trunc
 from typing import Any, Deque, Dict, List
 
+from pysmt.fnode import FNode
 from pysmt.shortcuts import (
     And,
     Or,
@@ -393,10 +394,10 @@ def applyADD(
                 Plus(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
-                    else parameters[0].value[0],
+                    else get_pysmt_constant(parameters[0]),
                     CPC.input_variables[parameters[1].name]
                     if parameters[1].name in CPC.input_variables
-                    else parameters[1].value[0],
+                    else get_pysmt_constant(parameters[1]),
                 ),
             )
         )
@@ -2405,7 +2406,7 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
         if CR.stack[-1].name in CPC.input_variables
         else CR.ephemeral_variables[CR.stack[-1].name]
         if CR.stack[-1].name in CR.ephemeral_variables
-        else CR.stack[-1].value[0]
+        else get_pysmt_constant(CR.stack[-1])
     ]
     # Some preprocessing
     if l[0]["prim"] == "COMPARE":
@@ -2414,7 +2415,7 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
             if CR.stack[-2].name in CPC.input_variables
             else CR.ephemeral_variables[CR.stack[-2].name]
             if CR.stack[-2].name in CR.ephemeral_variables
-            else CR.stack[-2].value[0]
+            else get_pysmt_constant(CR.stack[-2])
         )
         # Execute COMPARE here
         ins_c = l.pop(0)
@@ -2422,13 +2423,17 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
         if step is not None:
             CR.steps.append(step)
     else:  # EQ, GE, etc...
-        checked_variables.append("0")
+        checked_variables.append(Int(0))
     if (
         len(
             [
                 True
                 for x in checked_variables
-                if str(x) in CPC.input_variables or str(x) in CR.ephemeral_variables
+                if x.is_symbol()
+                and (
+                    x.symbol_name() in CPC.input_variables
+                    or x.symbol_name() in CR.ephemeral_variables
+                )
             ]
         )
         > 0
@@ -2436,7 +2441,13 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
         track = True
         CPC.predicates.append(op(checked_variables[-2], checked_variables[-1]))
         if (
-            len([True for x in checked_variables if str(x) in CR.ephemeral_variables])
+            len(
+                [
+                    True
+                    for x in checked_variables
+                    if x.is_symbol() and x.symbol_name() in CR.ephemeral_variables
+                ]
+            )
             > 0
         ):
             add_set = set()
@@ -2493,3 +2504,26 @@ def process_unpairmacro(l: List[Dict[str, Any]]) -> None:
         step = process_instruction(i, CR.stack)
         if step is not None and "IF" not in i["prim"]:
             CR.steps.append(step)
+
+
+def get_pysmt_constant(value: Data) -> FNode:
+    match value.prim:
+        case "int" | "mutez" | "nat" | "list" | "timestamp":
+            return Int(int(value.value[0]))
+        case (
+            "address"
+            | "bytes"
+            | "chain_id"
+            | "key"
+            | "key_hash"
+            | "signature"
+            | "string"
+        ):
+            return String(value.value[0])
+        case "bool" | "or" | "option" | "pair":
+            return Bool(value.value[0].lower() == "true")
+        case _:
+            raise CustomException(
+                "unknown sym var type " + value.prim,
+                {"prim": value.prim, "value": value.value, "name": value.name},
+            )
