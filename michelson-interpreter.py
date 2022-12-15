@@ -83,7 +83,7 @@ def process_run():
     for i in CR.path_constraints[1:]:
         with Solver() as s:
             fm = get_env().formula_manager
-            predicate_set = set(i.predicates)
+            predicate_set = {fm.normalize(j) for j in i.predicates}
             s.add_assertions(i.predicates)
             if (
                 len(
