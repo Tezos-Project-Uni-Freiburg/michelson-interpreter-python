@@ -1154,7 +1154,8 @@ def applyIF_NONE(
                     te = q.popleft()
                     if hasattr(te, "args") and len(te.args()) != 0:
                         q.extend(te.args())
-                    e.add(te)
+                    else:
+                        e.add(te)
                 if CR.ephemeral_variables.get(parameters[0].name) in e:
                     add.add(i)
             CPC.predicates.extend(add)
@@ -1326,12 +1327,14 @@ def applyLOOP(
             add = set()
             for i in CR.ephemeral_predicates:
                 e = set()
-                q = deque(i.args())
+                q = deque()
+                q.append(i)
                 while len(q) != 0:
                     te = q.popleft()
                     if hasattr(te, "args") and len(te.args()) != 0:
                         q.extend(te.args())
-                    e.add(te)
+                    else:
+                        e.add(te)
                 if CR.ephemeral_variables.get(top.name) in e:
                     add.add(i)
             CPC.predicates.extend(add)
@@ -2452,12 +2455,14 @@ def process_ifmacro(l: List[Dict[str, Any]]) -> None:
             add_set = set()
             for i in CR.ephemeral_predicates:
                 e = set()
-                q = deque(i.args())
+                q = deque()
+                q.append(i)
                 while len(q) != 0:
                     te = q.popleft()
                     if hasattr(te, "args") and len(te.args()) != 0:
                         q.extend(te.args())
-                    e.add(te)
+                    else:
+                        e.add(te)
                 if any([True if x in e else False for x in checked_variables]):
                     add_set.add(i)
             local_ephemeral_predicates.extend(add_set)
