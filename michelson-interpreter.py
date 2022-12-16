@@ -84,7 +84,6 @@ def process_run():
         with Solver() as s:
             fm = get_env().formula_manager
             predicate_set = {fm.normalize(j) for j in i.predicates}
-            s.add_assertions(i.predicates)
             if (
                 len(
                     [
@@ -111,7 +110,7 @@ def process_run():
                 != 0
             ):
                 continue
-            # s.add_assertions(i.predicates)
+            s.add_assertions(i.predicates)
             # Adding neq cur.val.
             e = set()
             for j in i.predicates:
@@ -124,7 +123,7 @@ def process_run():
                     else:
                         e.add(te)
             for j in e:
-                if str(j) not in CR.concrete_variables:  # type: ignore
+                if str(j) not in CR.concrete_variables:
                     continue
                 match CR.concrete_variables[str(j)].prim:
                     case "int" | "mutez" | "nat" | "list" | "timestamp":
@@ -158,7 +157,7 @@ def process_run():
                 r.path_constraints.clear()
                 r.steps.clear()
                 r.executed = False
-                r.creation_predicates = list(s.assertions)  # type: ignore
+                r.creation_predicates = list(s.assertions)
                 # Variable generation
                 r.stack.append(copy.deepcopy(CR.concrete_variables["pair_0"]))
                 r.concrete_variables = {r.stack[0].name: r.stack[0]}
