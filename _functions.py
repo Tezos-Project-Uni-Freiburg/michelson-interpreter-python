@@ -26,7 +26,6 @@ from pysmt.shortcuts import (
     Plus,
     Minus,
     Times,
-    Div,
     Not,
     Symbol,
     Int,
@@ -36,9 +35,8 @@ from pysmt.shortcuts import (
     NotEquals,
     Solver,
 )
-from pysmt.typing import INT, STRING
+from pysmt.typing import INT
 
-# import z3
 from base58 import b58encode_check
 
 import _variables
@@ -454,10 +452,10 @@ def applyAND(
                         And(
                             CPC.input_variables[parameters[0].name]
                             if parameters[0].name in CPC.input_variables
-                            else Bool(parameters[0].value[0].lower() == "true"),
+                            else get_pysmt_constant(parameters[0]),
                             CPC.input_variables[parameters[1].name]
                             if parameters[1].name in CPC.input_variables
-                            else Bool(parameters[1].value[0].lower() == "true"),
+                            else get_pysmt_constant(parameters[1]),
                         ),
                     )
                 )
@@ -600,10 +598,10 @@ def applyCONCAT(
                     Plus(
                         CPC.input_variables[parameters[0].name]
                         if parameters[0].name in CPC.input_variables
-                        else parameters[0].value[0],
+                        else get_pysmt_constant(parameters[0]),
                         CPC.input_variables[parameters[1].name]
                         if parameters[1].name in CPC.input_variables
-                        else parameters[1].value[0],
+                        else get_pysmt_constant(parameters[1]),
                     ),
                 )
             )
@@ -761,7 +759,7 @@ def applyEDIV(
     else:
         output.option_value = "Some"
 
-    with Solver(name="z3") as s:
+    with Solver() as s:
         q_s, r_s = (Symbol(i, INT) for i in ["q", "r"])
         z1_s, z2_s = Int(z1), Int(z2)
         s.add_assertions(
@@ -771,8 +769,8 @@ def applyEDIV(
             ]
         )
         if s.check_sat():
-            q = int(str(s.get_model()[q_s]))  # type: ignore
-            r = int(str(s.get_model()[r_s]))  # type: ignore
+            q = int(str(s.get_model()[q_s]))
+            r = int(str(s.get_model()[r_s]))
         else:
             # These can be wrong, EDIV logic is weird
             q = trunc(z1 / z2)
@@ -842,22 +840,22 @@ def applyEDIV(
                     operator.truediv(
                         CPC.input_variables[parameters[0].name]
                         if parameters[0].name in CPC.input_variables
-                        else Int(int(parameters[0].value[0])),
+                        else get_pysmt_constant(parameters[0]),
                         CPC.input_variables[parameters[1].name]
                         if parameters[1].name in CPC.input_variables
-                        else Int(int(parameters[1].value[0])),
+                        else get_pysmt_constant(parameters[1]),
                     ),
                 ),
                 Equals(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
-                    else Int(int(parameters[0].value[0])),
+                    else get_pysmt_constant(parameters[0]),
                     Plus(
                         Times(
                             CR.ephemeral_variables[q_p.name],
                             CPC.input_variables[parameters[1].name]
                             if parameters[1].name in CPC.input_variables
-                            else Int(int(parameters[1].value[0])),
+                            else get_pysmt_constant(parameters[1]),
                         ),
                         CR.ephemeral_variables[r_p.name],
                     ),
@@ -1150,7 +1148,8 @@ def applyIF_NONE(
             add = set()
             for i in CR.ephemeral_predicates:
                 e = set()
-                q = deque(i.args())
+                q = deque()
+                q.append(i)
                 while len(q) != 0:
                     te = q.popleft()
                     if hasattr(te, "args") and len(te.args()) != 0:
@@ -1524,10 +1523,10 @@ def applyMUL(
                 Times(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
-                    else Int(z1),
+                    else get_pysmt_constant(parameters[0]),
                     CPC.input_variables[parameters[1].name]
                     if parameters[1].name in CPC.input_variables
-                    else Int(z2),
+                    else get_pysmt_constant(parameters[1]),
                 ),
             )
         )
@@ -1547,7 +1546,7 @@ def applyNEG(
         CR.ephemeral_predicates.append(
             Equals(
                 CR.ephemeral_variables[output.name],
-                operator.neg(CPC.input_variables[parameters[0].name]),  # type: ignore
+                operator.neg(CPC.input_variables[parameters[0].name]),
             )
         )
 
@@ -1619,7 +1618,7 @@ def applyNOT(
                 CR.ephemeral_predicates.append(
                     Equals(
                         CR.ephemeral_variables[output.name],
-                        operator.neg(CPC.input_variables[parameters[0].name]),  # type: ignore
+                        operator.neg(CPC.input_variables[parameters[0].name]),
                     )
                 )
             return output
@@ -1673,10 +1672,10 @@ def applyOR(
                     Or(
                         CPC.input_variables[parameters[0].name]
                         if parameters[0].name in CPC.input_variables
-                        else Bool(parameters[0].value[0].lower() == "true"),
+                        else get_pysmt_constant(parameters[0]),
                         CPC.input_variables[parameters[1].name]
                         if parameters[1].name in CPC.input_variables
-                        else Bool(parameters[1].value[0].lower() == "true"),
+                        else get_pysmt_constant(parameters[1]),
                     ),
                 )
             )
@@ -1932,10 +1931,10 @@ def applySUB(
                 Minus(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
-                    else parameters[0].value[0],
+                    else get_pysmt_constant(parameters[0]),
                     CPC.input_variables[parameters[1].name]
                     if parameters[1].name in CPC.input_variables
-                    else parameters[1].value[0],
+                    else get_pysmt_constant(parameters[1]),
                 ),
             )
         )
@@ -2048,10 +2047,10 @@ def applyXOR(
                     Xor(
                         CPC.input_variables[parameters[0].name]
                         if parameters[0].name in CPC.input_variables
-                        else Bool(parameters[0].value[0].lower() == "true"),
+                        else get_pysmt_constant(parameters[0]),
                         CPC.input_variables[parameters[1].name]
                         if parameters[1].name in CPC.input_variables
-                        else Bool(parameters[1].value[0].lower() == "true"),
+                        else get_pysmt_constant(parameters[1]),
                     ),
                 )
             )
