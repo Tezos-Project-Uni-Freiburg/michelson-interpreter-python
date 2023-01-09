@@ -12,7 +12,7 @@ from collections import deque
 
 import click
 import pysmt.fnode
-from pysmt.shortcuts import Bool, Int, NotEquals, Solver, String, Symbol, get_env
+from pysmt.shortcuts import Int, NotEquals, Solver, String, Symbol, get_env
 
 import _functions
 import _types
@@ -138,10 +138,8 @@ def process_run():
                         | "string"
                     ):
                         v = String(CR.concrete_variables[str(j)].value[0])
-                    case "bool" | "or" | "option" | "pair":
-                        v = Bool(
-                            CR.concrete_variables[str(j)].value[0].lower() == "true"
-                        )
+                    case "bool" | "or" | "option" | "pair" | "unit":
+                        continue
                     case _:
                         raise _types.CustomException(
                             "unknown sym var type " + str(j),

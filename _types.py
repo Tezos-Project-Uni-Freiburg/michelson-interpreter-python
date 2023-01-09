@@ -170,7 +170,7 @@ def create_symbolic_variable(d: Data) -> pysmt.fnode.FNode:
             | "string"
         ):
             return Symbol(d.name, STRING)
-        case "bool" | "or" | "option" | "pair":
+        case "bool" | "or" | "option" | "pair" | "unit":
             return Symbol(d.name)
         case _:
             raise CustomException(
