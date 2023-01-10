@@ -166,7 +166,7 @@ def create_symbolic_variable(d: Data) -> z3.ExprRef:
             | "string"
         ):
             return z3.String(d.name)
-        case "bool" | "or" | "option" | "pair":
+        case "bool" | "or" | "option" | "pair" | "unit":
             return z3.Bool(d.name)
         case _:
             raise CustomException(

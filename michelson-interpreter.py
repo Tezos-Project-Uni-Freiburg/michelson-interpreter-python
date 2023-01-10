@@ -116,8 +116,10 @@ def process_run():
             if str(j) not in CR.concrete_variables:  # type: ignore
                 continue
             match CR.concrete_variables[str(j)].prim:
-                case "int" | "mutez" | "nat" | "list" | "timestamp":
+                case "int" | "mutez" | "nat" | "timestamp":
                     v = z3.IntVal(int(CR.concrete_variables[str(j)].value[0]))
+                case "list":
+                    v = z3.IntVal(len(CR.concrete_variables[str(j)].value[0]))
                 case (
                     "address"
                     | "bytes"
@@ -129,9 +131,7 @@ def process_run():
                 ):
                     v = z3.StringVal(CR.concrete_variables[str(j)].value[0])
                 case "bool" | "or" | "option" | "pair":
-                    v = z3.BoolVal(
-                        CR.concrete_variables[str(j)].value[0].lower() == "true"
-                    )
+                    continue
                 case _:
                     raise _types.CustomException(
                         "unknown sym var type " + str(j),
