@@ -621,13 +621,15 @@ def applyCREATE_CONTRACT(
 def applyDIG(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
-    if instruction["args"][0]["int"] != 0:
-        if instruction["args"][0]["int"] > len(stack) - 1:
+    if instruction["args"][0]["int"] != "0":
+        if int(instruction["args"][0]["int"]) > len(stack) - 1:
             raise CustomException(
                 "not enough elements in the stack",
                 {"instruction": instruction, "parameters": parameters},
             )
-        dequemove(stack, len(stack) - 1 - instruction["args"][0]["int"], len(stack) - 1)
+        e = stack[len(stack) - 1 - int(instruction["args"][0]["int"])]
+        stack.remove(e)
+        stack.append(e)
     return None
 
 
@@ -2185,12 +2187,12 @@ def parseMAP(args, value) -> Data:
             "input doesn't match with the specified types",
             {"args": args, "value": value},
         )
-    kv = [x.strip() for x in params[1].split(";")]
-    if kv[len(kv) - 1] == "":
-        kv.pop()
-    for i in kv:
-        r = re.match(r'Elt\s+([a-zA-Z0-9"_ ]+)\s+(.+)', i)
-        if r is None:
+    kv_list = [x.strip() for x in params[1].split(";")]
+    if kv_list[len(kv_list) - 1] == "":
+        kv_list.pop()
+    for i in kv_list:
+        kv = re.match(r'Elt\s+([a-zA-Z0-9"_ ]+)\s+(.+)', i)
+        if kv is None:
             raise CustomException(
                 "input doesn't match with the specified types",
                 {"args": args, "value": value},
@@ -2200,19 +2202,29 @@ def parseMAP(args, value) -> Data:
             case (
                 "int" | "mutez" | "nat" | "timestamp" | "bytes" | "signature" | "bool"
             ):
-                if r[1] in output.value[0]:
+                if kv[1] in output.value[0]:
                     raise CustomException(
                         "key already present in map", {"args": args, "value": value}
                     )
+                else:
+                    k = kv[1]
             case ("string" | "address" | "key" | "key_hash"):
-                if re.sub(r'^"(.+(?="$))"$', r"\1", r[1]) in output.value[0]:
+                k = re.match(r'^"(.+(?="$))"$', kv[1])
+                if k is None:
+                    raise CustomException(
+                        "input doesn't match with the specified types",
+                        {"args": args, "value": value},
+                    )
+                elif k[1] in output.value[0]:
                     raise CustomException(
                         "key already present in map", {"args": args, "value": value}
                     )
+                else:
+                    k = k[1]
             case _:
                 raise CustomException("not implemented", {"args": args, "value": value})
-        output.value[0][r[1]] = globals()["parse" + output.value_type.upper()](
-            args[1], r[2]
+        output.value[0][k] = globals()["parse" + output.value_type.upper()](
+            args[1], kv[2]
         )
     return output
 
@@ -2357,15 +2369,6 @@ def parse(args, value) -> Data:
 
 
 # parsing functions end
-
-
-# from https://github.com/sindresorhus/array-move
-# TODO: needs testing
-def dequemove(l: Deque, from_index: int, to_index: int) -> None:
-    start_index = len(l) + from_index if from_index < 0 else from_index
-    if start_index >= 0 and start_index < len(l):
-        end_index = len(l) + to_index if to_index < 0 else to_index
-        l.insert(end_index, popmultiple(l, from_index))
 
 
 def find_nested(d: Data) -> List[Data]:
