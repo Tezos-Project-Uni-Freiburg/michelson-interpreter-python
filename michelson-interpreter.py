@@ -181,15 +181,17 @@ def process_run():
                         case _:
                             continue
                 match j.name().split("_")[0]:  # type: ignore
+                    case "list":
+                        if s.model()[CR.symbolic_variables[j.name()]].as_long() == 0:  # type: ignore
+                            r.concrete_variables[j.name()].value = [[]]  # type: ignore
+                        else:
+                            # TODO: implement value generation for lists
+                            ...
                     case "or":
-                        # _variables.CREATE_VARIABLE = True
                         if str(s.model()[CR.symbolic_variables[j.name()]]).lower() == "true":  # type: ignore
                             r.concrete_variables[j.name()].or_value = "Left"  # type: ignore
-                            # r.concrete_variables[j.name()].value = [_types.Data(r.concrete_variables[j.name()].or_type[0], ["0"], j.name())]  # type: ignore
                         else:
                             r.concrete_variables[j.name()].or_value = "Right"  # type: ignore
-                            # r.concrete_variables[j.name()].value = [_types.Data(r.concrete_variables[j.name()].or_type[1], ["0"], j.name())]  # type: ignore
-                        # _variables.CREATE_VARIABLE = False
                     case "option":
                         if str(s.model()[CR.symbolic_variables[j.name()]]).lower() == "true":  # type: ignore
                             r.concrete_variables[j.name()].option_value = "None"  # type: ignore
@@ -199,9 +201,6 @@ def process_run():
                             r.concrete_variables[j.name()].value.clear()  # type: ignore
                         else:
                             r.concrete_variables[j.name()].option_value = "Some"  # type: ignore
-                            # _variables.CREATE_VARIABLE = True
-                            # r.concrete_variables[j.name()].value = [_types.Data(r.concrete_variables[j.name()].option_type[0], [], j.name())]  # type: ignore
-                            # _variables.CREATE_VARIABLE = False
                     case "pair":
                         continue
                     case _:

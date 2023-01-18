@@ -1297,6 +1297,7 @@ def applyLEFT(
 def applyLOOP(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
+    # TODO: PCT
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
     v = False
@@ -1366,6 +1367,7 @@ def applyLOOP(
 def applyLOOP_LEFT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
+    # TODO: PCT
     CR = _variables.CURRENT_RUN
     CPC = _variables.CURRENT_RUN.current_path_constraint
     v = False

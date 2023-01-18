@@ -79,6 +79,21 @@ class Data:
                 self.name
             ] = create_symbolic_variable(self)
 
+    def __eq__(self, __o: object) -> bool:
+        return (
+            hasattr(__o, "value")
+            and len(self.value) == len(__o.value)  # type: ignore
+            and all(
+                [
+                    True if self.value[i] == __o.value[i] else False  # type: ignore
+                    for i in range(len(self.value))
+                ]
+            )
+        )
+
+    def __hash__(self) -> int:
+        return hash(tuple(self.value))
+
 
 @dataclass
 class Delta:
@@ -168,6 +183,9 @@ def create_symbolic_variable(d: Data) -> z3.ExprRef:
             return z3.String(d.name)
         case "bool" | "or" | "option" | "pair" | "unit":
             return z3.Bool(d.name)
+        case "map":
+            # TODO: maps in z3
+            return None  # type: ignore
         case _:
             raise CustomException(
                 "unknown sym var type " + d.prim,
