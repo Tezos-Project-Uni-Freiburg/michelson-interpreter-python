@@ -327,12 +327,31 @@ def process_instruction(
 def applyABS(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
-    return Data("nat", [str(abs(int(parameters[0].value[0])))])
+    # Γ  ⊢  ABS  ::  int  :  A  ⇒  nat  :  A
+    CR = _variables.CURRENT_RUN
+    CPC = CR.current_path_constraint
+    output = Data("nat", [str(abs(int(parameters[0].value[0])))])
+    if parameters[0].name in CPC.input_variables:
+        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        CR.ephemeral_predicates.append(
+            operator.eq(
+                CR.ephemeral_variables[output.name],
+                CPC.input_variables[parameters[0].name],
+            )
+        )
+    return output
 
 
 def applyADD(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  ADD  ::  nat  :  nat  :  A  ⇒  nat  :  A
+    # Γ  ⊢  ADD  ::  nat  :  int  :  A  ⇒  int  :  A
+    # Γ  ⊢  ADD  ::  int  :  nat  :  A  ⇒  int  :  A
+    # Γ  ⊢  ADD  ::  int  :  int  :  A  ⇒  int  :  A
+    # Γ  ⊢  ADD  ::  timestamp  :  int  :  A  ⇒  timestamp  :  A
+    # Γ  ⊢  ADD  ::  int  :  timestamp  :  A  ⇒  timestamp  :  A
+    # Γ  ⊢  ADD  ::  mutez  :  mutez  :  A  ⇒  mutez  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
 
@@ -382,6 +401,7 @@ def applyADD(
 def applyADDRESS(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ):
+    # Γ  ⊢  ADDRESS  ::  contract   ty1  :  A  ⇒  address  :  A
     return parameters[0].value[0]
 
 
@@ -390,6 +410,7 @@ def applyAMOUNT(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
+    # Γ  ⊢  AMOUNT  ::  A  ⇒  mutez  :  A
     output = Data(
         "mutez", [str(_variables.CURRENT_RUN.current_state.amount)], None, "sv_amount"
     )
@@ -399,6 +420,9 @@ def applyAMOUNT(
 def applyAND(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  AND  ::  bool  :  bool  :  A  ⇒  bool  :  A
+    # Γ  ⊢  AND  ::  nat  :  nat  :  A  ⇒  nat  :  A
+    # Γ  ⊢  AND  ::  int  :  nat  :  A  ⇒  nat  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
 
@@ -453,6 +477,7 @@ def applyAPPLY(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
+    # Γ  ⊢  APPLY  ::  ty1  :  lambda   (  pair   ty1   ty2  )   ty3  :  A  ⇒  lambda   ty2   ty3  :  A
     # Not implemented
     return Data("lambda")
 
@@ -462,6 +487,7 @@ def applyBALANCE(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
+    # Γ  ⊢  BALANCE  ::  A  ⇒  mutez  :  A
     return Data(
         "mutez", [str(_variables.CURRENT_RUN.current_state.balance)], None, "sv_balance"
     )
@@ -470,14 +496,30 @@ def applyBALANCE(
 def applyBLAKE2B(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
-    return Data("bytes", [blake2b(bytes(parameters[0].value[0], "utf-8")).hexdigest()])
+    # Γ  ⊢   BLAKE2B   ::  bytes  :  A  ⇒  bytes  :  A
+    CR = _variables.CURRENT_RUN
+    CPC = CR.current_path_constraint
+    output = Data(
+        "bytes", [blake2b(bytes(parameters[0].value[0], "utf-8")).hexdigest()]
+    )
+    if parameters[0].name in CPC.input_variables:
+        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        CR.ephemeral_predicates.append(
+            operator.eq(
+                CR.ephemeral_variables[output.name],
+                CPC.input_variables[parameters[0].name],
+            )
+        )
+    return output
 
 
 def applyCAR(instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]):
+    # Γ  ⊢  CAR  ::  pair   ty1   ty2  :  A  ⇒  ty1  :  A
     return parameters[0].value[0]
 
 
 def applyCDR(instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]):
+    # Γ  ⊢  CDR  ::  pair   ty1   ty2  :  A  ⇒  ty2  :  A
     return parameters[0].value[1]
 
 
@@ -486,6 +528,7 @@ def applyCHAIN_ID(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ):
+    # Γ  ⊢  CHAIN_ID  ::  A  ⇒  chain_id  :  A
     # Not implemented
     return Data("chain_id", ["0x1"], None, "sv_chain_id")
 
@@ -495,6 +538,7 @@ def applyCHECK_SIGNATURE(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
+    # Γ  ⊢  CHECK_SIGNATURE  ::  key  :  signature  :  bytes  :  A  ⇒  bool  :  A
     # Not implemented
     return Data("bool", ["False"])
 
@@ -502,6 +546,11 @@ def applyCHECK_SIGNATURE(
 def applyCOMPARE(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    #  z1  <  z2  COMPARE  /  z1  :  z2  :  S  ⇒  − 1   :  S
+    #  z1  =  z2  COMPARE  /  z1  :  z2  :  S  ⇒  0  :  S
+    #  z1  >  z2  COMPARE  /  z1  :  z2  :  S  ⇒  1  :  S
+    CR = _variables.CURRENT_RUN
+    CPC = CR.current_path_constraint
     # template
     if "C" not in parameters[0].attributes or "C" not in parameters[1].attributes:
         raise CustomException(
@@ -539,12 +588,48 @@ def applyCOMPARE(
                 "COMPARE not implemented for complex types",
                 {"instruction": instruction, "parameters": parameters},
             )
+    if (
+        len(
+            set(CPC.input_variables.keys()).intersection(
+                set([i.name for i in parameters])
+            )
+        )
+        != 0
+    ):
+        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        CR.ephemeral_predicates.append(
+            operator.eq(
+                CR.ephemeral_variables[output.name],
+                z3.IntVal(output.value[0]),
+            )
+        )
+        op = (
+            operator.lt
+            if output.value[0] == "-1"
+            else operator.gt
+            if output.value[0] == "1"
+            else operator.eq
+        )
+        CPC.predicates.append(
+            op(
+                CPC.input_variables[parameters[0].name]
+                if parameters[0].name in CPC.input_variables
+                else parameters[0].value[0],  # type: ignore
+                CPC.input_variables[parameters[1].name]
+                if parameters[1].name in CPC.input_variables
+                else parameters[1].value[0],  # type: ignore
+            )
+        )
     return output
 
 
 def applyCONCAT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  CONCAT  ::  string  :  string  :  A  ⇒  string  :  A
+    # Γ  ⊢  CONCAT  ::  list   string  :  A  ⇒  string  :  A
+    # Γ  ⊢  CONCAT  ::  bytes  :  bytes  :  A  ⇒  bytes  :  A
+    # Γ  ⊢  CONCAT  ::  list   bytes  :  A  ⇒  bytes  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
 
@@ -586,6 +671,7 @@ def applyCONCAT(
 
 
 def applyCONS(instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]):
+    # Γ  ⊢  CONS  ::  ty1  :  list   ty1  :  A  ⇒  list   ty1  :  A
     if parameters[0].prim != parameters[1].list_type:
         raise CustomException(
             "list type and element type are not same",
@@ -599,6 +685,7 @@ def applyCONS(instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque
 def applyCONTRACT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  CONTRACT   ty  ::  address  :  A  ⇒  option   (  contract   ty  )  :  A
     # Not implemented completely
     output = Data("option")
     output.option_value = "Some"
@@ -614,6 +701,8 @@ def applyCREATE_CONTRACT(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> List[Data]:
+    # Some ty2  ⊢  instr  ::  pair   ty2   ty1  :   [ ]   ⇒  pair   (  list   operation  )   ty1  :   [ ]
+    # Γ  ⊢  CREATE_CONTRACT   {   parameter   ty1  ;   storage   ty2  ;   code   instr1  }  ::  option   key_hash  :  mutez  :  ty2  :  A  ⇒  operation  :  address  :  A
     # Not implemented
     return [Data("operation"), Data("address")]
 
@@ -621,6 +710,7 @@ def applyCREATE_CONTRACT(
 def applyDIG(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
+    # Γ  ⊢  DIG   n  ::  A  @  (  ty1  :  B  )  ⇒  ty1  :  (  A  @  B  )
     if instruction["args"][0]["int"] != "0":
         if int(instruction["args"][0]["int"]) > len(stack) - 1:
             raise CustomException(
@@ -636,6 +726,7 @@ def applyDIG(
 def applyDIP(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
+    #  Γ  ⊢  DIP   instr  ::  ty  :  B  ⇒  ty  :  C
     n = 1
     if "int" in instruction["args"][0]:
         n = int(instruction["args"][0]["int"])
@@ -667,6 +758,7 @@ def applyDIP(
 def applyDROP(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
+    # Γ  ⊢  DROP  ::  ty  :  A  ⇒  A
     n = int(instruction["args"][0]["int"]) if "args" in instruction else 1
     if n > len(stack):
         raise CustomException(
@@ -682,6 +774,7 @@ def applyDROP(
 def applyDUG(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
+    # Γ  ⊢  DUG   n  ::  ty1  :  (  A  @  B  )  ⇒  A  @  (  ty1  :  B  )
     n = int(instruction["args"][0]["int"])
     if n == 0:
         return None
@@ -698,6 +791,7 @@ def applyDUG(
 def applyDUP(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  DUP  ::  ty1  :  A  ⇒  ty1  :  ty1  :  A
     n = int(instruction["args"][0]["int"]) if "args" in instruction else 1
     if n == 0:
         raise CustomException(
@@ -716,6 +810,12 @@ def applyDUP(
 def applyEDIV(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  EDIV  ::  nat  :  nat  :  A  ⇒  option   (  pair   nat   nat  )  :  A
+    # Γ  ⊢  EDIV  ::  nat  :  int  :  A  ⇒  option   (  pair   int   nat  )  :  A
+    # Γ  ⊢  EDIV  ::  int  :  nat  :  A  ⇒  option   (  pair   int   nat  )  :  A
+    # Γ  ⊢  EDIV  ::  int  :  int  :  A  ⇒  option   (  pair   int   nat  )  :  A
+    # Γ  ⊢  EDIV  ::  mutez  :  nat  :  A  ⇒  option   (  pair   mutez   mutez  )  :  A
+    # Γ  ⊢  EDIV  ::  mutez  :  mutez  :  A  ⇒  option   (  pair   nat   mutez  )  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
 
@@ -867,6 +967,7 @@ def applyEDIV(
 def applyEMPTY_BIG_MAP(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  EMPTY_BIG_MAP   kty   vty  ::  A  ⇒  big_map   kty   vty  :  A
     if "C" not in Data(instruction["args"][0]["prim"]).attributes:
         raise CustomException(
             "kty is not comparable",
@@ -886,6 +987,7 @@ def applyEMPTY_BIG_MAP(
 def applyEMPTY_MAP(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  EMPTY_MAP   kty   vty  ::  A  ⇒  map   kty   vty  :  A
     if "C" not in Data(instruction["args"][0]["prim"]).attributes:
         raise CustomException(
             "kty is not comparable",
@@ -900,6 +1002,7 @@ def applyEMPTY_MAP(
 def applyEMPTY_SET(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  EMPTY_SET   cty  ::  A  ⇒  set   cty  :  A
     if "C" not in Data(instruction["args"][0]["prim"]).attributes:
         raise CustomException(
             "kty is not comparable",
@@ -913,6 +1016,7 @@ def applyEMPTY_SET(
 def applyEQ(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  EQ  ::  int  :  A  ⇒  bool  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
     output = Data("bool")
@@ -937,6 +1041,7 @@ def applyEXEC(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
+    # Γ  ⊢  EXEC  ::  ty1  :  lambda   ty1   ty2  :  A  ⇒  ty2  :  A
     # Not implemented
     return Data("unit", ["Unit"])
 
@@ -944,6 +1049,7 @@ def applyEXEC(
 def applyFAILWITH(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
+    # Γ  ⊢  FAILWITH  ::  ty1  :  A  ⇒  B
     if "PA" not in stack[len(stack) - 1].attributes:
         raise CustomException(
             "FAILWITH got non-packable top element",
@@ -960,6 +1066,7 @@ def applyFAILWITH(
 def applyGE(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  GE  ::  int  :  A  ⇒  bool  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
     output = Data("bool")
@@ -982,6 +1089,8 @@ def applyGE(
 def applyGET(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  GET  ::  kty  :  map   kty   vty  :  A  ⇒  option   vty  :  A
+    # Γ  ⊢  GET  ::  kty  :  big_map   kty   vty  :  A  ⇒  option   vty  :  A
     output = Data("option")
     output.option_type.append(parameters[1].key_type)
     if parameters[0].value[0] in parameters[1].value[0]:
@@ -995,6 +1104,7 @@ def applyGET(
 def applyGT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  GT  ::  int  :  A  ⇒  bool  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
     output = Data("bool")
@@ -1017,6 +1127,8 @@ def applyGT(
 def applyHASH_KEY(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  HASH_KEY  ::  key  :  A  ⇒  key_hash  :  A
+    # TODO: should be considered within PCTs but don't know how to model it yet
     return Data(
         "key_hash",
         [b58encode_check(bytes.fromhex(parameters[0].value[0])).decode("utf-8")],
@@ -1026,6 +1138,9 @@ def applyHASH_KEY(
 def applyIF(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
+    # Γ  ⊢  instr1  ::  A  ⇒  B
+    # Γ  ⊢  instr2  ::  A  ⇒  B
+    # Γ  ⊢  IF   instr1   instr2  ::  bool  :  A  ⇒  B
     branch = 0 if parameters[0].value[0].lower() == "true" else 1
     for i in flatten(instruction["args"][branch]):
         if isinstance(i, list):
@@ -1043,6 +1158,9 @@ def applyIF(
 def applyIF_CONS(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
+    # Γ  ⊢  instr1  ::  ty  :  list   ty  :  A  ⇒  B
+    # Γ  ⊢  instr2  ::  A  ⇒  B
+    # Γ  ⊢  IF_CONS   instr1   instr2  ::  list   ty  :  A  ⇒  B
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
     if len(parameters[0].value[0]) > 0:
@@ -1082,6 +1200,9 @@ def applyIF_CONS(
 def applyIF_LEFT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
+    # Γ  ⊢  instr1  ::  ty1  :  A  ⇒  B
+    # Γ  ⊢  instr2  ::  ty2  :  A  ⇒  B
+    # Γ  ⊢  IF_LEFT   instr1   instr2  ::  or   ty1   ty2  :  A  ⇒  B
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
     branch = 0 if parameters[0].or_value == "Left" else 1
@@ -1116,6 +1237,9 @@ def applyIF_LEFT(
 def applyIF_NONE(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
+    # Γ  ⊢  instr1  ::  A  ⇒  B
+    # Γ  ⊢  instr2  ::  ty1  :  A  ⇒  B
+    # Γ  ⊢  IF_NONE   instr1   instr2  ::  option   ty1  :  A  ⇒  B
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
 
@@ -1174,6 +1298,7 @@ def applyIF_NONE(
 def applyIMPLICIT_ACCOUNT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  IMPLICIT_ACCOUNT  ::  key_hash  :  A  ⇒  contract   unit  :  A
     output = Data("contract", [parameters[0]])
     output.contract_type = "unit"
     return output
@@ -1182,6 +1307,8 @@ def applyIMPLICIT_ACCOUNT(
 def applyINT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  INT  ::  nat  :  A  ⇒  int  :  A
+    # Γ  ⊢  INT  ::  bls12_381_fr   :  A  ⇒  int  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
 
@@ -1202,6 +1329,7 @@ def applyINT(
 def applyISNAT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  ISNAT  ::  int  :  A  ⇒  option   nat  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
 
@@ -1252,6 +1380,12 @@ def applyITER(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> None:
+    # Γ  ⊢  instr  ::  ty  :  A  ⇒  A
+    # Γ  ⊢  ITER   instr  ::  list   ty  :  A  ⇒  A
+    # Γ  ⊢  instr  ::  cty  :  A  ⇒  A
+    # Γ  ⊢  ITER   instr  ::  set   cty  :  A  ⇒  A
+    # Γ  ⊢  instr  ::  (  pair   kty   vty  )  :  A  ⇒  A
+    # Γ  ⊢  ITER   instr  ::  map   kty   vty  :  A  ⇒  A
     # Not implemented
     return None
 
@@ -1261,6 +1395,8 @@ def applyLAMBDA(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> None:
+    # None  ⊢  instr  ::  ty1  :   [ ]   ⇒  ty2  :   [ ]
+    # Γ  ⊢  LAMBDA   ty1   ty2   instr  ::  A  ⇒  lambda   ty1   ty2  :  A
     # Not implemented
     return None
 
@@ -1268,6 +1404,7 @@ def applyLAMBDA(
 def applyLE(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  LE  ::  int  :  A  ⇒  bool  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
     output = Data("bool")
@@ -1290,6 +1427,7 @@ def applyLE(
 def applyLEFT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  LEFT   ty2  ::  ty1  :  A  ⇒  or   ty1   ty2  :  A
     output = Data("or", [parameters[0]])
     output.or_value = "Left"
     output.or_type.extend([parameters[0].prim, instruction["args"][0].get("prim")])
@@ -1300,6 +1438,8 @@ def applyLOOP(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
     # TODO: PCT
+    # Γ  ⊢  instr  ::  A  ⇒  bool  :  A
+    # Γ  ⊢  LOOP   instr  ::  bool  :  A  ⇒  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
     v = False
@@ -1369,6 +1509,8 @@ def applyLOOP(
 def applyLOOP_LEFT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> None:
+    # Γ  ⊢  instr  ::  ty1  :  A  ⇒  or   ty1   ty2  :  A
+    # Γ  ⊢  LOOP_LEFT   instr  ::  or   ty1   ty2  :  A  ⇒  ty2  :  A
     # TODO: PCT
     CR = _variables.CURRENT_RUN
     CPC = _variables.CURRENT_RUN.current_path_constraint
@@ -1423,6 +1565,7 @@ def applyLOOP_LEFT(
 def applyLSL(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  LSL  ::  nat  :  nat  :  A  ⇒  nat  :  A
     f = int(parameters[0].value[0])
     s = int(parameters[1].value[0])
     if s > 256:
@@ -1436,6 +1579,8 @@ def applyLSL(
 def applyLSR(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  LSR  ::  nat  :  nat  :  A  ⇒  nat  :  A
+    # TODO: PCT but don't know if logical shifts can be expressed in z3
     f = int(parameters[0].value[0])
     s = int(parameters[1].value[0])
     if s > 256:
@@ -1449,6 +1594,7 @@ def applyLSR(
 def applyLT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  LT  ::  int  :  A  ⇒  bool  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
     output = Data("bool")
@@ -1468,7 +1614,13 @@ def applyLT(
     return output
 
 
-def applyMAP(instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]):
+def applyMAP(
+    instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
+) -> Data:
+    # Γ  ⊢  instr  ::  ty  :  A  ⇒  ty2  :  A
+    # Γ  ⊢  MAP   instr  ::  list   ty  :  A  ⇒  list   ty2  :  A
+    # Γ  ⊢  instr  ::  (  pair   kty   ty1  )  :  A  ⇒  ty2  :  A
+    # Γ  ⊢  MAP   instr  ::  map   kty   ty1  :  A  ⇒  map   kty   ty2  :  A
     new_list = []
     for _ in range(len(parameters[0].value[0])):
         stack.append(parameters[0].value[0].pop(0))
@@ -1484,6 +1636,9 @@ def applyMAP(instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[
 def applyMEM(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  MEM  ::  cty  :  set   cty  :  A  ⇒  bool  :  A
+    # Γ  ⊢  MEM  ::  kty  :  map   kty   vty  :  A  ⇒  bool  :  A
+    # Γ  ⊢  MEM  ::  kty  :  big_map   kty   vty  :  A  ⇒  bool  :  A
     if (
         parameters[1].prim in ["big_map", "map"]
         and parameters[1].key_type != parameters[0].prim
@@ -1501,6 +1656,19 @@ def applyMEM(
 def applyMUL(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  MUL  ::  nat  :  nat  :  A  ⇒  nat  :  A
+    # Γ  ⊢  MUL  ::  nat  :  int  :  A  ⇒  int  :  A
+    # Γ  ⊢  MUL  ::  int  :  nat  :  A  ⇒  int  :  A
+    # Γ  ⊢  MUL  ::  int  :  int  :  A  ⇒  int  :  A
+    # Γ  ⊢  MUL  ::  mutez  :  nat  :  A  ⇒  mutez  :  A
+    # Γ  ⊢  MUL  ::  nat  :  mutez  :  A  ⇒  mutez  :  A
+    # Γ  ⊢  MUL  ::  bls12_381_g1  :  bls12_381_fr  :  A  ⇒  bls12_381_g1  :  A
+    # Γ  ⊢  MUL  ::  bls12_381_g2  :  bls12_381_fr  :  A  ⇒  bls12_381_g2  :  A
+    # Γ  ⊢  MUL  ::  bls12_381_fr  :  bls12_381_fr  :  A  ⇒  bls12_381_fr  :  A
+    # Γ  ⊢  MUL  ::  nat  :  bls12_381_fr   :  A  ⇒  bls12_381_fr  :  A
+    # Γ  ⊢  MUL  ::  int  :  bls12_381_fr   :  A  ⇒  bls12_381_fr  :  A
+    # Γ  ⊢  MUL  ::  bls12_381_fr  :  nat  :  A  ⇒  bls12_381_fr  :  A
+    # Γ  ⊢  MUL  ::  bls12_381_fr  :  int  :  A  ⇒  bls12_381_fr  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
 
@@ -1544,6 +1712,11 @@ def applyMUL(
 def applyNEG(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  NEG  ::  nat  :  A  ⇒  int  :  A
+    # Γ  ⊢  NEG  ::  int  :  A  ⇒  int  :  A
+    # Γ  ⊢  NEG  ::  bls12_381_g1  :  A  ⇒  bls12_381_g1  :  A
+    # Γ  ⊢  NEG  ::  bls12_381_g2  :  A  ⇒  bls12_381_g2  :  A
+    # Γ  ⊢  NEG  ::  bls12_381_fr  :  A  ⇒  bls12_381_fr  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
 
@@ -1564,6 +1737,7 @@ def applyNEG(
 def applyNEQ(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  NEQ  ::  int  :  A  ⇒  bool  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
     output = Data("bool")
@@ -1586,6 +1760,7 @@ def applyNEQ(
 def applyNIL(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  NIL   ty  ::  A  ⇒  list   ty  :  A
     if "args" not in instruction:
         raise CustomException(
             "type of list is not declared",
@@ -1599,6 +1774,7 @@ def applyNIL(
 def applyNONE(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  NONE   ty  ::  A  ⇒  option   ty  :  A
     if "args" not in instruction:
         raise CustomException(
             "type of option is not declared",
@@ -1613,6 +1789,9 @@ def applyNONE(
 def applyNOT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  NOT  ::  bool  :  A  ⇒  bool  :  A
+    # Γ  ⊢  NOT  ::  nat  :  A  ⇒  int  :  A
+    # Γ  ⊢  NOT  ::  int  :  A  ⇒  int  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
 
@@ -1641,6 +1820,7 @@ def applyNOW(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
+    # Γ  ⊢  NOW  ::  A  ⇒  timestamp  :  A
     return Data(
         "timestamp",
         [str(_variables.CURRENT_RUN.current_state.timestamp)],
@@ -1652,6 +1832,8 @@ def applyNOW(
 def applyOR(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  OR  ::  bool  :  bool  :  A  ⇒  bool  :  A
+    # Γ  ⊢  OR  ::  nat  :  nat  :  A  ⇒  nat  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
 
@@ -1697,6 +1879,7 @@ def applyOR(
 def applyPACK(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  PACK  ::  ty  :  A  ⇒  bytes  :  A
     # not implemented
     if "PA" not in parameters[0].attributes:
         raise CustomException(
@@ -1709,6 +1892,7 @@ def applyPACK(
 def applyPAIR(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  PAIR  ::  ty1  :  ty2  :  A  ⇒  pair   ty1   ty2  :  A
     if "args" in instruction:
         raise CustomException(
             "PAIR 'n' case hasn't been implemented",
@@ -1724,6 +1908,8 @@ def applyPUSH(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
+    # Γ  ⊢  x  ::  ty
+    # Γ  ⊢  PUSH   ty   x  ::  A  ⇒  ty  :  A
     dk = {"int", "string", "bytes", "prim"}
     output = Data(instruction["args"][0]["prim"])
     match instruction["args"][0]["prim"]:
@@ -1789,6 +1975,7 @@ def applyPUSH(
 def applyRIGHT(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  RIGHT   ty1  ::  ty2  :  A  ⇒  or   ty1   ty2  :  A
     output = Data("or", [parameters[0]])
     parameters[0].parent = output.name
     output.or_value = "Right"
@@ -1801,6 +1988,8 @@ def applySELF(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
+    # Γ  =  Some   ty
+    # Γ  ⊢  SELF  ::  A  ⇒  contract   ty  :  A
     # Not implemented completely
     output = Data("contract", [], None, "sv_self")
     output.contract_type = "unit"
@@ -1815,6 +2004,7 @@ def applySENDER(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
+    # Γ  ⊢  SENDER  ::  A  ⇒  address  :  A
     # Not implemented completely/correctly
     return Data(
         "address", [_variables.CURRENT_RUN.current_state.address], None, "sv_sender"
@@ -1826,6 +2016,7 @@ def applySET_DELEGATE(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
+    # Γ  ⊢  SET_DELEGATE  ::  option   key_hash  :  A  ⇒  operation  :  A
     # Not implemented
     return Data("operation")
 
@@ -1833,24 +2024,33 @@ def applySET_DELEGATE(
 def applySHA256(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢   SHA256   ::  bytes  :  A  ⇒  bytes  :  A
     return Data("bytes", [sha256(bytes(parameters[0].value[0])).hexdigest()])
 
 
 def applySHA512(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢   SHA512   ::  bytes  :  A  ⇒  bytes  :  A
     return Data("bytes", [sha512(bytes(parameters[0].value[0])).hexdigest()])
 
 
 def applySIZE(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  SIZE  ::  set   cty  :  A  ⇒  nat  :  A
+    # Γ  ⊢  SIZE  ::  map   kty   vty  :  A  ⇒  nat  :  A
+    # Γ  ⊢  SIZE  ::  list   ty  :  A  ⇒  nat  :  A
+    # Γ  ⊢  SIZE  ::  string  :  A  ⇒  nat  :  A
+    # Γ  ⊢  SIZE  ::  bytes  :  A  ⇒  nat  :  A
     return Data("nat", [str(len(parameters[0].value[0]))])
 
 
 def applySLICE(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  SLICE  ::  nat  :  nat  :  string  :  A  ⇒  option   string  :  A
+    # Γ  ⊢  SLICE  ::  nat  :  nat  :  bytes  :  A  ⇒  option   bytes  :  A
     offset = int(parameters[0].value[0])
     _len = int(parameters[1].value[0])
     _str = parameters[2].value[0]
@@ -1869,6 +2069,7 @@ def applySLICE(
 def applySOME(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  SOME  ::  ty1  :  A  ⇒  option   ty1  :  A
     if "args" not in instruction:
         raise CustomException(
             "type of option is not declared",
@@ -1891,6 +2092,7 @@ def applySOURCE(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
+    # Γ  ⊢  SOURCE  ::  A  ⇒  address  :  A
     # Not implemented completely
     return Data(
         "address", [_variables.CURRENT_RUN.current_state.address], None, "sv_source"
@@ -1900,6 +2102,13 @@ def applySOURCE(
 def applySUB(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  SUB  ::  nat  :  nat  :  A  ⇒  int  :  A
+    # Γ  ⊢  SUB  ::  nat  :  int  :  A  ⇒  int  :  A
+    # Γ  ⊢  SUB  ::  int  :  nat  :  A  ⇒  int  :  A
+    # Γ  ⊢  SUB  ::  int  :  int  :  A  ⇒  int  :  A
+    # Γ  ⊢  SUB  ::  timestamp  :  int  :  A  ⇒  timestamp  :  A
+    # Γ  ⊢  SUB  ::  timestamp  :  timestamp  :  A  ⇒  int  :  A
+    # Γ  ⊢  SUB  ::  mutez  :  mutez  :  A  ⇒  mutez  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
 
@@ -1952,6 +2161,7 @@ def applySUB(
 def applySWAP(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> List:
+    # Γ  ⊢  SWAP  ::  ty1  :  ty2  :  A  ⇒  ty2  :  ty1  :  A
     return list(parameters)[::-1]
 
 
@@ -1960,6 +2170,7 @@ def applyTRANSFER_TOKENS(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
+    # Γ  ⊢  TRANSFER_TOKENS  ::  ty  :  mutez  :  contract   ty  :  A  ⇒  operation  :  A
     # Not implemented
     return Data("operation")
 
@@ -1969,12 +2180,14 @@ def applyUNIT(
     parameters: Deque[Data] | None,
     stack: Deque[Data],
 ) -> Data:
+    # Γ  ⊢  UNIT  ::  A  ⇒  unit  :  A
     return Data("unit", ["Unit"])
 
 
 def applyUNPACK(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  UNPACK   ty  ::  bytes  :  A  ⇒  option   ty  :  A
     # Type check is not being done here
     v = ast.literal_eval(
         json.dumps(bytes.fromhex(parameters[0].value[0]).decode("utf-8"))
@@ -1999,6 +2212,9 @@ def applyUNPACK(
 def applyUPDATE(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ):
+    # Γ  ⊢  UPDATE  ::  cty  :  bool  :  set   cty  :  A  ⇒  set   cty  :  A
+    # Γ  ⊢  UPDATE  ::  kty  :  option   vty  :  map   kty   vty  :  A  ⇒  map   kty   vty  :  A
+    # Γ  ⊢  UPDATE  ::  kty  :  option   vty  :  big_map   kty   vty  :  A  ⇒  big_map   kty   vty  :  A
     # TODO: missing Data parent update
     if parameters[1].prim == "bool":
         if parameters[0].prim != parameters[2].set_type:
@@ -2031,6 +2247,8 @@ def applyUPDATE(
 def applyXOR(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
+    # Γ  ⊢  XOR  ::  bool  :  bool  :  A  ⇒  bool  :  A
+    # Γ  ⊢  XOR  ::  nat  :  nat  :  A  ⇒  nat  :  A
     CR = _variables.CURRENT_RUN
     CPC = CR.current_path_constraint
 
