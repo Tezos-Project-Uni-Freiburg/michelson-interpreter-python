@@ -18,12 +18,7 @@ import z3
 import _functions
 import _types
 import _variables
-from _functions import (
-    initialize,
-    process_ifmacro,
-    process_instruction,
-    process_unpairmacro,
-)
+from _functions import flatten, initialize, process_instruction
 
 
 def excepthook(type, value, traceback):
@@ -54,15 +49,9 @@ def michelson_interpreter(code: list):
     CR = _variables.CURRENT_RUN
     try:
         for i in code:
-            if isinstance(i, list):
-                if i[-1]["prim"] == "IF":
-                    process_ifmacro(i)
-                else:
-                    process_unpairmacro(i)
-            else:
-                step = process_instruction(i, CR.stack)
-                if step is not None and "IF" not in i["prim"]:
-                    CR.steps.append(step)
+            step = process_instruction(i, CR.stack)
+            if step is not None and "IF" not in i["prim"]:
+                CR.steps.append(step)
     except Exception as e:
         if isinstance(e, _types.CustomException):
             CR.current_path_constraint.satisfiable = False
@@ -296,7 +285,8 @@ def main(
     parameter_type, storage_type, code = (
         s[0],
         s[1],
-        s[2]["args"],
+        # TODO: outer `flatten` seems to be just to make sure, could find a better way for this
+        flatten(flatten(s[2]["args"])),
     )
 
     # Initial run

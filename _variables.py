@@ -10,7 +10,7 @@ from _types import Run
 CURRENT_RUN: Run
 EXECUTED_RUNS: List[Run] = []
 REMAINING_RUNS: List[Run] = []
-UNPAIR_FLAG: bool = False
+# UNPAIR_FLAG: bool = False
 CREATE_VARIABLE: bool = False
 
 # Constants
