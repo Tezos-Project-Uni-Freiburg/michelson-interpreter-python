@@ -1115,6 +1115,11 @@ def applyGE(
                     CR.temporary_predicates[parameters[0].name][i] = operator.ge(
                         children[0], children[1]  # type: ignore
                     )
+                elif str(CR.temporary_predicates[parameters[0].name][i].decl()) == "<":
+                    children = CR.temporary_predicates[parameters[0].name][i].children()
+                    CR.temporary_predicates[parameters[0].name][i] = operator.le(
+                        children[0], children[1]  # type: ignore
+                    )
             CR.temporary_predicates[output.name] = CR.temporary_predicates[
                 parameters[0].name
             ]
@@ -1546,6 +1551,11 @@ def applyLE(
                 if str(CR.temporary_predicates[parameters[0].name][i].decl()) == "<":
                     children = CR.temporary_predicates[parameters[0].name][i].children()
                     CR.temporary_predicates[parameters[0].name][i] = operator.le(
+                        children[0], children[1]  # type: ignore
+                    )
+                elif str(CR.temporary_predicates[parameters[0].name][i].decl()) == ">":
+                    children = CR.temporary_predicates[parameters[0].name][i].children()
+                    CR.temporary_predicates[parameters[0].name][i] = operator.ge(
                         children[0], children[1]  # type: ignore
                     )
             CR.temporary_predicates[output.name] = CR.temporary_predicates[
