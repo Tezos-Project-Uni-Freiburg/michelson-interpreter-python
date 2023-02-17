@@ -196,6 +196,7 @@ def process_run():
                         r.concrete_variables[j.name()].value = [str(s.model()[CR.symbolic_variables[j.name()]])]  # type: ignore
             r.ephemeral_predicates.clear()
             r.ephemeral_variables.clear()
+            r.temporary_predicates.clear()
             r.symbolic_variables = copy.deepcopy(CR.symbolic_variables)
             r.path_constraints.append(_types.PathConstraint())
             r.path_constraints[0].input_variables = copy.deepcopy(r.symbolic_variables)
