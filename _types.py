@@ -146,8 +146,12 @@ class Run:
     variable_names: Dict[str, Set[int]] = field(default_factory=dict)
     concrete_variables: Dict[str, Data] = field(default_factory=dict)
     symbolic_variables: Dict[str, z3.ExprRef] = field(default_factory=dict)
-    ephemeral_concrete_variables: Dict[str, Data] = field(default_factory=dict, init=False)
-    ephemeral_symbolic_variables: Dict[str, z3.ExprRef] = field(default_factory=dict, init=False)
+    ephemeral_concrete_variables: Dict[str, Data] = field(
+        default_factory=dict, init=False
+    )
+    ephemeral_symbolic_variables: Dict[str, z3.ExprRef] = field(
+        default_factory=dict, init=False
+    )
     ephemeral_predicates: List[Any] = field(default_factory=list, init=False)
     temporary_predicates: Dict[str, List[z3.ExprRef]] = field(
         default_factory=dict, init=False
