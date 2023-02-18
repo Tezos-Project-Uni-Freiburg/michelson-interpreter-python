@@ -328,10 +328,11 @@ def applyABS(
     CPC = CR.current_path_constraint
     output = Data("nat", [str(abs(int(parameters[0].value[0])))])
     if parameters[0].name in CPC.input_variables:
-        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
         CR.ephemeral_predicates.append(
             operator.eq(
-                CR.ephemeral_variables[output.name],
+                CR.ephemeral_symbolic_variables[output.name],
                 CPC.input_variables[parameters[0].name],
             )
         )
@@ -369,18 +370,12 @@ def applyADD(
             )
     output = Data(prim, value)
 
-    if (
-        len(
-            set(CPC.input_variables.keys()).intersection(
-                set([i.name for i in parameters])
-            )
-        )
-        != 0
-    ):
-        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+    if set(CPC.input_variables.keys()) & set([i.name for i in parameters]):
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
         CR.ephemeral_predicates.append(
             operator.eq(
-                CR.ephemeral_variables[output.name],
+                CR.ephemeral_symbolic_variables[output.name],
                 operator.add(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
@@ -435,16 +430,13 @@ def applyAND(
             )
             # For now, only implemented for bool
             if (
-                len(
-                    (
-                        set(CPC.input_variables.keys())
-                        | set(CR.ephemeral_variables.keys())
-                    )
-                    & set([i.name for i in parameters])
+                set(CPC.input_variables.keys())
+                | set(CR.ephemeral_symbolic_variables.keys())
+            ) & set([i.name for i in parameters]):
+                CR.ephemeral_concrete_variables[output.name] = output
+                CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(
+                    output
                 )
-                != 0
-            ):
-                CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
                 CR.temporary_predicates[output.name] = []
                 if CR.temporary_predicates[parameters[0].name]:
                     CR.temporary_predicates[output.name].extend(
@@ -457,19 +449,21 @@ def applyAND(
                 op1 = (
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
-                    else CR.ephemeral_variables[parameters[0].name]
-                    if parameters[0].name in CR.ephemeral_variables
+                    else CR.ephemeral_symbolic_variables[parameters[0].name]
+                    if parameters[0].name in CR.ephemeral_symbolic_variables
                     else z3.BoolVal(parameters[0].value[0].lower() == "true")
                 )
                 op2 = (
                     CPC.input_variables[parameters[1].name]
                     if parameters[1].name in CPC.input_variables
-                    else CR.ephemeral_variables[parameters[1].name]
-                    if parameters[1].name in CR.ephemeral_variables
+                    else CR.ephemeral_symbolic_variables[parameters[1].name]
+                    if parameters[1].name in CR.ephemeral_symbolic_variables
                     else z3.BoolVal(parameters[1].value[0].lower() == "true")
                 )
                 CR.ephemeral_predicates.append(
-                    operator.eq(CR.ephemeral_variables[output.name], z3.And(op1, op2))
+                    operator.eq(
+                        CR.ephemeral_symbolic_variables[output.name], z3.And(op1, op2)
+                    )
                 )
             return output
         case "nat" | "int":
@@ -514,10 +508,11 @@ def applyBLAKE2B(
         "bytes", [blake2b(bytes(parameters[0].value[0], "utf-8")).hexdigest()]
     )
     if parameters[0].name in CPC.input_variables:
-        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
         CR.ephemeral_predicates.append(
             operator.eq(
-                CR.ephemeral_variables[output.name],
+                CR.ephemeral_symbolic_variables[output.name],
                 CPC.input_variables[parameters[0].name],
             )
         )
@@ -600,29 +595,26 @@ def applyCOMPARE(
                 {"instruction": instruction, "parameters": parameters},
             )
     if (
-        len(
-            (set(CPC.input_variables.keys()) | set(CR.ephemeral_variables.keys()))
-            & set([i.name for i in parameters])
-        )
-        != 0
-    ):
-        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        set(CPC.input_variables.keys()) | set(CR.ephemeral_symbolic_variables.keys())
+    ) & set([i.name for i in parameters]):
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
         CR.ephemeral_predicates.append(
             operator.eq(
-                CR.ephemeral_variables[output.name],
+                CR.ephemeral_symbolic_variables[output.name],
                 z3.IntVal(output.value[0]),
             )
         )
         CR.conditional_operands[output.name] = (
             CPC.input_variables[parameters[0].name]
             if parameters[0].name in CPC.input_variables
-            else CR.ephemeral_variables[parameters[0].name]
-            if parameters[0].name in CR.ephemeral_variables
+            else CR.ephemeral_symbolic_variables[parameters[0].name]
+            if parameters[0].name in CR.ephemeral_symbolic_variables
             else parameters[0].value[0],  # type: ignore
             CPC.input_variables[parameters[1].name]
             if parameters[1].name in CPC.input_variables
-            else CR.ephemeral_variables[parameters[1].name]
-            if parameters[1].name in CR.ephemeral_variables
+            else CR.ephemeral_symbolic_variables[parameters[1].name]
+            if parameters[1].name in CR.ephemeral_symbolic_variables
             else parameters[1].value[0],  # type: ignore
         )
     return output
@@ -650,18 +642,14 @@ def applyCONCAT(
             [value],
         )
         # Only implemented for literal concats for now
-        if (
-            len(
-                set(CPC.input_variables.keys()).intersection(
-                    set([i.name for i in parameters])
-                )
+        if set(CPC.input_variables.keys()) & set([i.name for i in parameters]):
+            CR.ephemeral_concrete_variables[output.name] = output
+            CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(
+                output
             )
-            != 0
-        ):
-            CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
             CR.ephemeral_predicates.append(
                 operator.eq(
-                    CR.ephemeral_variables[output.name],
+                    CR.ephemeral_symbolic_variables[output.name],
                     operator.add(
                         CPC.input_variables[parameters[0].name]
                         if parameters[0].name in CPC.input_variables
@@ -825,11 +813,14 @@ def applyEDIV(
 
     if z2 == 0:
         output.option_value = "None"
-        if parameters[1].name in CPC.input_variables:
-            CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        if parameters[1].name in CPC.input_variables | CR.ephemeral_symbolic_variables:
+            CR.ephemeral_concrete_variables[output.name] = output
+            CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(
+                output
+            )
             CR.ephemeral_predicates.append(
                 operator.eq(
-                    CR.ephemeral_variables[output.name],
+                    CR.ephemeral_symbolic_variables[output.name],
                     (
                         operator.eq(
                             CPC.input_variables[parameters[1].name], z3.IntVal(0)
@@ -884,21 +875,18 @@ def applyEDIV(
     r_p = Data(t2, [str(r)], p.name)
     p.value.extend([q_p, r_p])
     output.value.append(p)
-    if (
-        len(
-            set(CPC.input_variables.keys()).intersection(
-                set([i.name for i in parameters])
-            )
-        )
-        != 0
-    ):
-        CR.ephemeral_variables[p.name] = create_symbolic_variable(p)
+    if set(CPC.input_variables.keys()) & set([i.name for i in parameters]):
+        CR.ephemeral_concrete_variables[p.name] = p
+        CR.ephemeral_symbolic_variables[p.name] = create_symbolic_variable(p)
         if parameters[1].name in CPC.input_variables:
-            CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+            CR.ephemeral_concrete_variables[output.name] = output
+            CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(
+                output
+            )
             CR.ephemeral_predicates.extend(
                 [
                     operator.eq(
-                        CR.ephemeral_variables[output.name],
+                        CR.ephemeral_symbolic_variables[output.name],
                         (
                             operator.ne(
                                 CPC.input_variables[parameters[1].name], z3.IntVal(0)
@@ -906,24 +894,26 @@ def applyEDIV(
                         ),
                     ),
                     operator.eq(
-                        CR.ephemeral_variables[p.name],
-                        CR.ephemeral_variables[output.name],
+                        CR.ephemeral_symbolic_variables[p.name],
+                        CR.ephemeral_symbolic_variables[output.name],
                     ),
                 ]
             )
         else:
             CR.ephemeral_predicates.append(
                 operator.eq(
-                    CR.ephemeral_variables[p.name],
+                    CR.ephemeral_symbolic_variables[p.name],
                     z3.BoolVal(True),
                 )
             )
-        CR.ephemeral_variables[q_p.name] = create_symbolic_variable(q_p)
-        CR.ephemeral_variables[r_p.name] = create_symbolic_variable(r_p)
+        CR.ephemeral_concrete_variables[q_p.name] = q_p
+        CR.ephemeral_symbolic_variables[q_p.name] = create_symbolic_variable(q_p)
+        CR.ephemeral_concrete_variables[r_p.name] = r_p
+        CR.ephemeral_symbolic_variables[r_p.name] = create_symbolic_variable(r_p)
         CR.ephemeral_predicates.extend(
             [
                 operator.eq(
-                    CR.ephemeral_variables[q_p.name],
+                    CR.ephemeral_symbolic_variables[q_p.name],
                     operator.truediv(
                         CPC.input_variables[parameters[0].name]
                         if parameters[0].name in CPC.input_variables
@@ -934,7 +924,7 @@ def applyEDIV(
                     ),
                 ),
                 operator.eq(
-                    CR.ephemeral_variables[r_p.name],
+                    CR.ephemeral_symbolic_variables[r_p.name],
                     operator.mod(
                         CPC.input_variables[parameters[0].name]
                         if parameters[0].name in CPC.input_variables
@@ -950,12 +940,12 @@ def applyEDIV(
                     else z3.IntVal(int(parameters[0].value[0])),
                     operator.add(
                         operator.mul(
-                            CR.ephemeral_variables[q_p.name],
+                            CR.ephemeral_symbolic_variables[q_p.name],
                             CPC.input_variables[parameters[1].name]
                             if parameters[1].name in CPC.input_variables
                             else z3.IntVal(int(parameters[1].value[0])),
                         ),
-                        CR.ephemeral_variables[r_p.name],
+                        CR.ephemeral_symbolic_variables[r_p.name],
                     ),
                 ),
             ]
@@ -1025,9 +1015,10 @@ def applyEQ(
         output.value.append("False")
     if (
         parameters[0].name in CPC.input_variables
-        or parameters[0].name in CR.ephemeral_variables
+        or parameters[0].name in CR.ephemeral_symbolic_variables
     ):
-        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
         if CR.conditional_operands.get(parameters[0].name):
             CR.temporary_predicates[output.name] = [
                 operator.eq(
@@ -1047,11 +1038,11 @@ def applyEQ(
         op = operator.eq if output.value[0].lower() == "true" else operator.ne
         CR.ephemeral_predicates.append(
             operator.eq(
-                CR.ephemeral_variables[output.name],
+                CR.ephemeral_symbolic_variables[output.name],
                 op(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
-                    else CR.ephemeral_variables[parameters[0].name],
+                    else CR.ephemeral_symbolic_variables[parameters[0].name],
                     z3.IntVal(0),
                 ),
             )
@@ -1099,9 +1090,10 @@ def applyGE(
         output.value.append("False")
     if (
         parameters[0].name in CPC.input_variables
-        or parameters[0].name in CR.ephemeral_variables
+        or parameters[0].name in CR.ephemeral_symbolic_variables
     ):
-        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
         if CR.conditional_operands.get(parameters[0].name):
             CR.temporary_predicates[output.name] = [
                 operator.ge(
@@ -1121,11 +1113,11 @@ def applyGE(
         op = operator.ge if output.value[0].lower() == "true" else operator.lt
         CR.ephemeral_predicates.append(
             operator.eq(
-                CR.ephemeral_variables[output.name],
+                CR.ephemeral_symbolic_variables[output.name],
                 op(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
-                    else CR.ephemeral_variables[parameters[0].name],  # type: ignore
+                    else CR.ephemeral_symbolic_variables[parameters[0].name],  # type: ignore
                     z3.IntVal(0),
                 ),
             )
@@ -1161,9 +1153,10 @@ def applyGT(
         output.value.append("False")
     if (
         parameters[0].name in CPC.input_variables
-        or parameters[0].name in CR.ephemeral_variables
+        or parameters[0].name in CR.ephemeral_symbolic_variables
     ):
-        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
         if CR.conditional_operands.get(parameters[0].name):
             CR.temporary_predicates[output.name] = [
                 operator.gt(
@@ -1183,11 +1176,11 @@ def applyGT(
         op = operator.gt if output.value[0].lower() == "true" else operator.le
         CR.ephemeral_predicates.append(
             operator.eq(
-                CR.ephemeral_variables[output.name],
+                CR.ephemeral_symbolic_variables[output.name],
                 op(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
-                    else CR.ephemeral_variables[parameters[0].name],  # type: ignore
+                    else CR.ephemeral_symbolic_variables[parameters[0].name],  # type: ignore
                     z3.IntVal(0),
                 ),
             )
@@ -1222,7 +1215,7 @@ def applyIF(
     # collecting in current run's `temporary_predicates`. There could
     # also be a number of predicates within `ephemeral_predicates`
     # which are bound to parameters[0].
-    if parameters[0].name in CPC.input_variables | CR.ephemeral_variables:
+    if parameters[0].name in CPC.input_variables | CR.ephemeral_symbolic_variables:
         temp_set = set()
         if (
             CR.temporary_predicates.get(parameters[0].name)
@@ -1248,13 +1241,11 @@ def applyIF(
                         q.extend(te.children())
                     if z3.is_const(te) and te.decl().kind() == z3.Z3_OP_UNINTERPRETED:
                         e.add(te)
-                if len(var_set & e) > 0:
+                if var_set & e:
                     temp_set.add(i)
             if temp_set:
                 local_ephemeral_predicates.extend(temp_set)
-                CR.ephemeral_predicates = list(
-                    set(CR.ephemeral_predicates).difference(temp_set)
-                )
+                CR.ephemeral_predicates = list(set(CR.ephemeral_predicates) - temp_set)
         else:
             for i in CR.ephemeral_predicates:
                 e = set()
@@ -1265,13 +1256,11 @@ def applyIF(
                         q.extend(te.children())
                     if z3.is_const(te) and te.decl().kind() == z3.Z3_OP_UNINTERPRETED:
                         e.add(te)
-                if CR.ephemeral_variables[parameters[0].name] in e:
+                if CR.ephemeral_symbolic_variables[parameters[0].name] in e:
                     temp_set.add(i)
             if temp_set:
                 local_ephemeral_predicates.extend(temp_set)
-                CR.ephemeral_predicates = list(
-                    set(CR.ephemeral_predicates).difference(temp_set)
-                )
+                CR.ephemeral_predicates = list(set(CR.ephemeral_predicates) - temp_set)
         CR.path_constraints.append(deepcopy(CPC))
         if branch == 0:
             CR.path_constraints[-1].predicates.append(
@@ -1375,21 +1364,24 @@ def applyIF_NONE(
         branch = 1
         stack.append(parameters[0].value[0])
 
-    # nested_parameters = {
-    #     i.name: True
-    #     if i.name in CPC.input_variables | CR.ephemeral_variables
-    #     else False
-    #     for i in list(parameters) + find_nested(parameters[0])
-    # }
+    nested_parameters = find_nested(parameters[0])
 
     t = [
         parameters[0].name in CPC.input_variables,
-        parameters[0].name in CR.ephemeral_variables,
+        parameters[0].name in CR.ephemeral_symbolic_variables,
+        True
+        if {i.name for i in nested_parameters}
+        & (
+            set(CPC.input_variables.keys())
+            | set(CR.ephemeral_symbolic_variables.keys())
+        )
+        else False,
     ]
 
     if any(t):
-        CR.path_constraints.append(deepcopy(CPC))
+        local_ephemeral_predicates = []
         if t[0]:
+            CR.path_constraints.append(deepcopy(CPC))
             CPC.predicates.append(
                 z3.Not(CR.symbolic_variables[parameters[0].name])
                 if branch == 0
@@ -1400,7 +1392,7 @@ def applyIF_NONE(
                 if branch == 0
                 else z3.Not(CR.symbolic_variables[parameters[0].name])
             )
-        else:
+        elif t[1]:
             add = set()
             for i in CR.ephemeral_predicates:
                 e = set()
@@ -1411,10 +1403,88 @@ def applyIF_NONE(
                         q.extend(te.children())
                     if z3.is_const(te) and te.decl().kind() == z3.Z3_OP_UNINTERPRETED:
                         e.add(te)
-                if CR.ephemeral_variables.get(parameters[0].name) in e:
+                if CR.ephemeral_symbolic_variables[parameters[0].name] in e or {
+                    j.name for j in nested_parameters
+                } & {str(j) for j in e}:
                     add.add(i)
-            CPC.predicates.extend(add)
-            CR.ephemeral_predicates = list(set(CR.ephemeral_predicates).difference(add))
+            if add:
+                local_ephemeral_predicates.extend(add)
+                CR.ephemeral_predicates = list(set(CR.ephemeral_predicates) - add)
+        else:
+            for i in nested_parameters:
+                if not {i.name} & (
+                    set(CPC.input_variables.keys())
+                    | set(CR.ephemeral_symbolic_variables.keys())
+                ):
+                    continue
+                temp_set = set()
+                if (
+                    CR.temporary_predicates.get(i.name)
+                    and len(CR.temporary_predicates[i.name]) != 0
+                ):
+                    CPC.predicates.extend(CR.temporary_predicates[i.name])
+                    var_set = set()
+                    for j in CR.temporary_predicates[i.name]:
+                        q = deque(j.children())
+                        while len(q) != 0:
+                            te = q.popleft()
+                            if hasattr(te, "children") and len(te.children()) != 0:
+                                q.extend(te.children())
+                            # Taken from: https://stackoverflow.com/a/12324518
+                            if (
+                                z3.is_const(te)
+                                and te.decl().kind() == z3.Z3_OP_UNINTERPRETED
+                            ):
+                                var_set.add(te)
+                    for j in CR.ephemeral_predicates:
+                        e = set()
+                        q = deque(j.children())
+                        while len(q) != 0:
+                            te = q.popleft()
+                            if hasattr(te, "children") and len(te.children()) != 0:
+                                q.extend(te.children())
+                            if (
+                                z3.is_const(te)
+                                and te.decl().kind() == z3.Z3_OP_UNINTERPRETED
+                            ):
+                                e.add(te)
+                        if var_set & e:
+                            temp_set.add(j)
+                    if temp_set:
+                        local_ephemeral_predicates.extend(temp_set)
+                        CR.ephemeral_predicates = list(
+                            set(CR.ephemeral_predicates) - temp_set
+                        )
+                else:
+                    for j in CR.ephemeral_predicates:
+                        e = set()
+                        q = deque(j.children())
+                        while len(q) != 0:
+                            te = q.popleft()
+                            if hasattr(te, "children") and len(te.children()) != 0:
+                                q.extend(te.children())
+                            if (
+                                z3.is_const(te)
+                                and te.decl().kind() == z3.Z3_OP_UNINTERPRETED
+                            ):
+                                e.add(te)
+                        if (
+                            CPC.input_variables.get(i.name)
+                            or CR.ephemeral_symbolic_variables.get(i.name)
+                        ) in e:
+                            temp_set.add(j)
+                    if temp_set:
+                        local_ephemeral_predicates.extend(temp_set)
+                        CR.ephemeral_predicates = list(
+                            set(CR.ephemeral_predicates) - temp_set
+                        )
+        # Adding all ephemeral predicates and repeating fork & negate
+        for i in local_ephemeral_predicates:
+            CPC.predicates.append(i)
+            CR.path_constraints.append(deepcopy(CPC))
+            CR.path_constraints[-1].predicates.append(
+                z3.Not(CR.path_constraints[-1].predicates.pop())
+            )
 
     for i in flatten(instruction["args"][branch]):
         step = process_instruction(i, stack)
@@ -1443,10 +1513,11 @@ def applyINT(
     output = Data("int", [parameters[0].value[0]])
 
     if parameters[0].name in CPC.input_variables:
-        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
         CR.ephemeral_predicates.append(
             operator.eq(
-                CR.ephemeral_variables[output.name],
+                CR.ephemeral_symbolic_variables[output.name],
                 CPC.input_variables[parameters[0].name],
             )
         )
@@ -1465,11 +1536,14 @@ def applyISNAT(
     output.option_type.append("nat")
     if int(parameters[0].value[0]) < 0:
         output.option_value = "None"
-        if parameters[0].name in CPC.input_variables:
-            CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        if parameters[0].name in CPC.input_variables | CR.ephemeral_symbolic_variables:
+            CR.ephemeral_concrete_variables[output.name] = output
+            CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(
+                output
+            )
             CR.ephemeral_predicates.append(
                 operator.eq(
-                    CR.ephemeral_variables[output.name],
+                    CR.ephemeral_symbolic_variables[output.name],
                     (
                         operator.eq(
                             CPC.input_variables[parameters[0].name], z3.IntVal(0)
@@ -1481,12 +1555,15 @@ def applyISNAT(
         output.option_value = "Some"
         i = Data("nat", [parameters[0].value[0]], output.name)
         if parameters[0].name in CPC.input_variables:
-            CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
-            CR.ephemeral_variables[i.name] = create_symbolic_variable(i)
+            CR.ephemeral_concrete_variables[output.name] = output
+            CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(
+                output
+            )
+            CR.ephemeral_symbolic_variables[i.name] = create_symbolic_variable(i)
             CR.ephemeral_predicates.extend(
                 [
                     operator.eq(
-                        CR.ephemeral_variables[output.name],
+                        CR.ephemeral_symbolic_variables[output.name],
                         (
                             operator.ne(
                                 CPC.input_variables[parameters[0].name], z3.IntVal(0)
@@ -1494,7 +1571,7 @@ def applyISNAT(
                         ),
                     ),
                     operator.eq(
-                        CR.ephemeral_variables[i.name],
+                        CR.ephemeral_symbolic_variables[i.name],
                         CPC.input_variables[parameters[0].name],
                     ),
                 ]
@@ -1542,9 +1619,10 @@ def applyLE(
         output.value.append("False")
     if (
         parameters[0].name in CPC.input_variables
-        or parameters[0].name in CR.ephemeral_variables
+        or parameters[0].name in CR.ephemeral_symbolic_variables
     ):
-        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
         if CR.conditional_operands.get(parameters[0].name):
             CR.temporary_predicates[output.name] = [
                 operator.le(
@@ -1564,11 +1642,11 @@ def applyLE(
         op = operator.le if output.value[0].lower() == "true" else operator.gt
         CR.ephemeral_predicates.append(
             operator.eq(
-                CR.ephemeral_variables[output.name],
+                CR.ephemeral_symbolic_variables[output.name],
                 op(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
-                    else CR.ephemeral_variables[parameters[0].name],  # type: ignore
+                    else CR.ephemeral_symbolic_variables[parameters[0].name],  # type: ignore
                     z3.IntVal(0),
                 ),
             )
@@ -1607,7 +1685,7 @@ def applyLOOP(
 
     t = [
         top.name in CPC.input_variables,
-        top.name in CR.ephemeral_variables,
+        top.name in CR.ephemeral_symbolic_variables,
     ]
 
     # PCT
@@ -1632,10 +1710,10 @@ def applyLOOP(
                         q.extend(te.children())
                     if z3.is_const(te) and te.decl().kind() == z3.Z3_OP_UNINTERPRETED:
                         e.add(te)
-                if CR.ephemeral_variables.get(top.name) in e:
+                if CR.ephemeral_symbolic_variables.get(top.name) in e:
                     add.add(i)
             CPC.predicates.extend(add)
-            CR.ephemeral_predicates = list(set(CR.ephemeral_predicates).difference(add))
+            CR.ephemeral_predicates = list(set(CR.ephemeral_predicates) - add)
 
     while v:
         for i in flatten(instruction["args"]):
@@ -1745,9 +1823,10 @@ def applyLT(
         output.value.append("False")
     if (
         parameters[0].name in CPC.input_variables
-        or parameters[0].name in CR.ephemeral_variables
+        or parameters[0].name in CR.ephemeral_symbolic_variables
     ):
-        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
         if CR.conditional_operands.get(parameters[0].name):
             CR.temporary_predicates[output.name] = [
                 operator.lt(
@@ -1767,11 +1846,11 @@ def applyLT(
         op = operator.lt if output.value[0].lower() == "true" else operator.ge
         CR.ephemeral_predicates.append(
             operator.eq(
-                CR.ephemeral_variables[output.name],
+                CR.ephemeral_symbolic_variables[output.name],
                 op(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
-                    else CR.ephemeral_variables[parameters[0].name],  # type: ignore
+                    else CR.ephemeral_symbolic_variables[parameters[0].name],  # type: ignore
                     z3.IntVal(0),
                 ),
             )
@@ -1820,13 +1899,10 @@ def applyMEM(
         ["True" if parameters[0].value[0] in parameters[1].value[0] else "False"],
     )
     if (
-        len(
-            (set(CPC.input_variables.keys()) | set(CR.ephemeral_variables.keys()))
-            & set([i.name for i in parameters])
-        )
-        != 0
-    ):
-        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        set(CPC.input_variables.keys()) | set(CR.ephemeral_symbolic_variables.keys())
+    ) & set([i.name for i in parameters]):
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
         CR.temporary_predicates[output.name] = []
         if CR.temporary_predicates[parameters[0].name]:
             CR.temporary_predicates[output.name].extend(
@@ -1870,18 +1946,12 @@ def applyMUL(
         case "mutez":
             t = "mutez"
     output = Data(t, [str(z1 * z2)])
-    if (
-        len(
-            set(CPC.input_variables.keys()).intersection(
-                set([i.name for i in parameters])
-            )
-        )
-        != 0
-    ):
-        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+    if set(CPC.input_variables.keys()) & set([i.name for i in parameters]):
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
         CR.ephemeral_predicates.append(
             operator.eq(
-                CR.ephemeral_variables[output.name],
+                CR.ephemeral_symbolic_variables[output.name],
                 operator.mul(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
@@ -1909,10 +1979,11 @@ def applyNEG(
     output = Data("int", [str(-int(parameters[0].value[0]))])
 
     if parameters[0].name in CPC.input_variables:
-        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
         CR.ephemeral_predicates.append(
             operator.eq(
-                CR.ephemeral_variables[output.name],
+                CR.ephemeral_symbolic_variables[output.name],
                 operator.neg(CPC.input_variables[parameters[0].name]),  # type: ignore
             )
         )
@@ -1933,9 +2004,10 @@ def applyNEQ(
         output.value.append("False")
     if (
         parameters[0].name in CPC.input_variables
-        or parameters[0].name in CR.ephemeral_variables
+        or parameters[0].name in CR.ephemeral_symbolic_variables
     ):
-        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
         if CR.conditional_operands.get(parameters[0].name):
             CR.temporary_predicates[output.name] = [
                 operator.ne(
@@ -1955,11 +2027,11 @@ def applyNEQ(
         op = operator.ne if output.value[0].lower() == "true" else operator.eq
         CR.ephemeral_predicates.append(
             operator.eq(
-                CR.ephemeral_variables[output.name],
+                CR.ephemeral_symbolic_variables[output.name],
                 op(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
-                    else CR.ephemeral_variables[parameters[0].name],
+                    else CR.ephemeral_symbolic_variables[parameters[0].name],
                     z3.IntVal(0),
                 ),  # type: ignore
             )
@@ -2012,9 +2084,12 @@ def applyNOT(
             output = Data("bool", [str(parameters[0].value[0].lower() == "true")])
             if (
                 parameters[0].name in CPC.input_variables
-                or parameters[0].name in CR.ephemeral_variables
+                or parameters[0].name in CR.ephemeral_symbolic_variables
             ):
-                CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+                CR.ephemeral_concrete_variables[output.name] = output
+                CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(
+                    output
+                )
                 if (
                     CR.temporary_predicates[parameters[0].name]
                     and len(CR.temporary_predicates[parameters[0].name]) != 0
@@ -2026,11 +2101,11 @@ def applyNOT(
                     CR.temporary_predicates[output.name] = []
                 CR.ephemeral_predicates.append(
                     operator.eq(
-                        CR.ephemeral_variables[output.name],
+                        CR.ephemeral_symbolic_variables[output.name],
                         operator.neg(
                             CPC.input_variables[parameters[0].name]
                             if parameters[0].name in CPC.input_variables
-                            else CR.ephemeral_variables[parameters[0].name]  # type: ignore
+                            else CR.ephemeral_symbolic_variables[parameters[0].name]  # type: ignore
                         ),
                     )
                 )
@@ -2074,13 +2149,13 @@ def applyOR(
             ],
         )
         if (
-            len(
-                (set(CPC.input_variables.keys()) | set(CR.ephemeral_variables.keys()))
-                & set([i.name for i in parameters])
+            set(CPC.input_variables.keys())
+            | set(CR.ephemeral_symbolic_variables.keys())
+        ) & set([i.name for i in parameters]):
+            CR.ephemeral_concrete_variables[output.name] = output
+            CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(
+                output
             )
-            != 0
-        ):
-            CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
             CR.temporary_predicates[output.name] = []
             if CR.temporary_predicates[parameters[0].name]:
                 CR.temporary_predicates[output.name].extend(
@@ -2093,19 +2168,21 @@ def applyOR(
             op1 = (
                 CPC.input_variables[parameters[0].name]
                 if parameters[0].name in CPC.input_variables
-                else CR.ephemeral_variables[parameters[0].name]
-                if parameters[0].name in CR.ephemeral_variables
+                else CR.ephemeral_symbolic_variables[parameters[0].name]
+                if parameters[0].name in CR.ephemeral_symbolic_variables
                 else z3.BoolVal(parameters[0].value[0].lower() == "true")
             )
             op2 = (
                 CPC.input_variables[parameters[1].name]
                 if parameters[1].name in CPC.input_variables
-                else CR.ephemeral_variables[parameters[1].name]
-                if parameters[1].name in CR.ephemeral_variables
+                else CR.ephemeral_symbolic_variables[parameters[1].name]
+                if parameters[1].name in CR.ephemeral_symbolic_variables
                 else z3.BoolVal(parameters[1].value[0].lower() == "true")
             )
             CR.ephemeral_predicates.append(
-                operator.eq(CR.ephemeral_variables[output.name], z3.Or(op1, op2))
+                operator.eq(
+                    CR.ephemeral_symbolic_variables[output.name], z3.Or(op1, op2)
+                )
             )
         return output
     else:
@@ -2289,18 +2366,136 @@ def applySLICE(
 ) -> Data:
     # Γ  ⊢  SLICE  ::  nat  :  nat  :  string  :  A  ⇒  option   string  :  A
     # Γ  ⊢  SLICE  ::  nat  :  nat  :  bytes  :  A  ⇒  option   bytes  :  A
-    offset = int(parameters[0].value[0])
+    CR = _variables.CURRENT_RUN
+    CPC = CR.current_path_constraint
+
+    _offset = int(parameters[0].value[0])
     _len = int(parameters[1].value[0])
     _str = parameters[2].value[0]
-    output = Data("option", [])
+    output = Data("option")
     output.option_type.append(parameters[2].prim)
-    if len(_str) == 0 or offset >= len(_str) or offset + _len > len(_str):
+    if len(_str) == 0 or _offset >= len(_str) or _offset + _len > len(_str):
         output.option_value = "None"
-    elif offset < len(_str) and offset + _len <= len(_str):
+    elif _offset < len(_str) and _offset + _len <= len(_str):
         output.option_value = "Some"
         output.value.append(
-            Data(parameters[2].prim, [_str[slice(offset, offset + _len)]], output.name)
+            Data(
+                parameters[2].prim, [_str[slice(_offset, _offset + _len)]], output.name
+            )
         )
+    # TODO: confusing and inefficient
+    if set(i.name for i in parameters) & (
+        set(CPC.input_variables.keys()) | set(CR.ephemeral_symbolic_variables.keys())
+    ):
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
+        if output.option_value == "None":
+            if len(_str) == 0 and parameters[2].name in (
+                set(CPC.input_variables.keys())
+                | set(CR.ephemeral_symbolic_variables.keys())
+            ):
+                CR.ephemeral_predicates.append(
+                    operator.eq(
+                        CR.ephemeral_symbolic_variables[output.name],
+                        operator.eq(
+                            z3.Length(
+                                CPC.input_variables[parameters[2].name]
+                                if parameters[2].name in CPC.input_variables
+                                else CR.ephemeral_symbolic_variables[parameters[2].name]
+                            ),
+                            z3.IntVal(0),
+                        ),
+                    )
+                )
+            elif _offset >= len(_str) and {parameters[0].name, parameters[2].name} & (
+                set(CPC.input_variables.keys())
+                | set(CR.ephemeral_symbolic_variables.keys())
+            ):
+                CR.ephemeral_predicates.append(
+                    operator.eq(
+                        CR.ephemeral_symbolic_variables[output.name],
+                        operator.ge(
+                            CPC.input_variables[parameters[0].name]
+                            if parameters[0].name in CPC.input_variables
+                            else CR.ephemeral_symbolic_variables[parameters[0].name]
+                            if parameters[0].name in CR.ephemeral_symbolic_variables
+                            else z3.IntVal(parameters[0].value[0]),  # type: ignore
+                            z3.Length(
+                                CPC.input_variables[parameters[2].name]
+                                if parameters[2].name in CPC.input_variables
+                                else CR.ephemeral_symbolic_variables[parameters[2].name]
+                                if parameters[2].name in CR.ephemeral_symbolic_variables
+                                else parameters[2].value[0],  # type: ignore
+                            ),
+                        ),
+                    )
+                )
+            else:
+                CR.ephemeral_predicates.append(
+                    operator.eq(
+                        CR.ephemeral_symbolic_variables[output.name],
+                        operator.gt(
+                            CPC.input_variables[parameters[0].name]
+                            if parameters[0].name in CPC.input_variables
+                            else CR.ephemeral_symbolic_variables[parameters[0].name]
+                            if parameters[0].name in CR.ephemeral_symbolic_variables
+                            else z3.IntVal(parameters[0].value[0])
+                            + CPC.input_variables[parameters[1].name]
+                            if parameters[1].name in CPC.input_variables
+                            else CR.ephemeral_symbolic_variables[parameters[1].name]
+                            if parameters[1].name in CR.ephemeral_symbolic_variables
+                            else z3.IntVal(parameters[1].value[0]),  # type: ignore
+                            z3.Length(
+                                CPC.input_variables[parameters[2].name]
+                                if parameters[2].name in CPC.input_variables
+                                else CR.ephemeral_symbolic_variables[parameters[2].name]
+                                if parameters[2].name in CR.ephemeral_symbolic_variables
+                                else parameters[2].value[0],  # type: ignore
+                            ),
+                        ),
+                    )
+                )
+        else:
+            CR.ephemeral_predicates.append(
+                operator.eq(
+                    CR.ephemeral_symbolic_variables[output.name],
+                    z3.And(
+                        operator.lt(
+                            CPC.input_variables[parameters[0].name]
+                            if parameters[0].name in CPC.input_variables
+                            else CR.ephemeral_symbolic_variables[parameters[0].name]
+                            if parameters[0].name in CR.ephemeral_symbolic_variables
+                            else z3.IntVal(parameters[0].value[0]),  # type: ignore
+                            z3.Length(
+                                CPC.input_variables[parameters[2].name]
+                                if parameters[2].name in CPC.input_variables
+                                else CR.ephemeral_symbolic_variables[parameters[2].name]
+                                if parameters[2].name in CR.ephemeral_symbolic_variables
+                                else parameters[2].value[0],
+                            ),
+                        ),
+                        operator.le(
+                            CPC.input_variables[parameters[0].name]
+                            if parameters[0].name in CPC.input_variables
+                            else CR.ephemeral_symbolic_variables[parameters[0].name]
+                            if parameters[0].name in CR.ephemeral_symbolic_variables
+                            else z3.IntVal(parameters[0].value[0])
+                            + CPC.input_variables[parameters[1].name]
+                            if parameters[1].name in CPC.input_variables
+                            else CR.ephemeral_symbolic_variables[parameters[1].name]
+                            if parameters[1].name in CR.ephemeral_symbolic_variables
+                            else z3.IntVal(parameters[1].value[0]),  # type: ignore
+                            z3.Length(
+                                CPC.input_variables[parameters[2].name]
+                                if parameters[2].name in CPC.input_variables
+                                else CR.ephemeral_symbolic_variables[parameters[2].name]
+                                if parameters[2].name in CR.ephemeral_symbolic_variables
+                                else parameters[2].value[0],
+                            ),
+                        ),
+                    ),
+                )
+            )
     return output
 
 
@@ -2371,18 +2566,12 @@ def applySUB(
         case "mutez":
             prim = "mutez"
     output = Data(prim, [str(z1 - z2)])
-    if (
-        len(
-            set(CPC.input_variables.keys()).intersection(
-                set([i.name for i in parameters])
-            )
-        )
-        != 0
-    ):
-        CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
+    if set(CPC.input_variables.keys()) & set([i.name for i in parameters]):
+        CR.ephemeral_concrete_variables[output.name] = output
+        CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(output)
         CR.ephemeral_predicates.append(
             operator.eq(
-                CR.ephemeral_variables[output.name],
+                CR.ephemeral_symbolic_variables[output.name],
                 operator.sub(
                     CPC.input_variables[parameters[0].name]
                     if parameters[0].name in CPC.input_variables
@@ -2497,13 +2686,13 @@ def applyXOR(
         )
         # For now, only implemented for bool
         if (
-            len(
-                (set(CPC.input_variables.keys()) | set(CR.ephemeral_variables.keys()))
-                & set([i.name for i in parameters])
+            set(CPC.input_variables.keys())
+            | set(CR.ephemeral_symbolic_variables.keys())
+        ) & set([i.name for i in parameters]):
+            CR.ephemeral_concrete_variables[output.name] = output
+            CR.ephemeral_symbolic_variables[output.name] = create_symbolic_variable(
+                output
             )
-            != 0
-        ):
-            CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
             CR.temporary_predicates[output.name] = []
             if CR.temporary_predicates[parameters[0].name]:
                 CR.temporary_predicates[output.name].extend(
@@ -2516,19 +2705,21 @@ def applyXOR(
             op1 = (
                 CPC.input_variables[parameters[0].name]
                 if parameters[0].name in CPC.input_variables
-                else CR.ephemeral_variables[parameters[0].name]
-                if parameters[0].name in CR.ephemeral_variables
+                else CR.ephemeral_symbolic_variables[parameters[0].name]
+                if parameters[0].name in CR.ephemeral_symbolic_variables
                 else z3.BoolVal(parameters[0].value[0].lower() == "true")
             )
             op2 = (
                 CPC.input_variables[parameters[1].name]
                 if parameters[1].name in CPC.input_variables
-                else CR.ephemeral_variables[parameters[1].name]
-                if parameters[1].name in CR.ephemeral_variables
+                else CR.ephemeral_symbolic_variables[parameters[1].name]
+                if parameters[1].name in CR.ephemeral_symbolic_variables
                 else z3.BoolVal(parameters[1].value[0].lower() == "true")
             )
             CR.ephemeral_predicates.append(
-                operator.eq(CR.ephemeral_variables[output.name], z3.Xor(op1, op2))
+                operator.eq(
+                    CR.ephemeral_symbolic_variables[output.name], z3.Xor(op1, op2)
+                )
             )
         return output
     else:

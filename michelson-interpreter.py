@@ -102,13 +102,18 @@ def process_run():
                 else:
                     e.add(te)
         for j in e:
-            if str(j) not in CR.concrete_variables:  # type: ignore
+            if str(j) not in (CR.concrete_variables | CR.ephemeral_concrete_variables):  # type: ignore
                 continue
-            match CR.concrete_variables[str(j)].prim:
+            var: _types.Data = CR.concrete_variables.get(
+                str(j)
+            ) or CR.ephemeral_concrete_variables.get(
+                str(j)
+            )  # type: ignore
+            match var.prim:
                 case "int" | "mutez" | "nat" | "timestamp":
-                    v = z3.IntVal(int(CR.concrete_variables[str(j)].value[0]))
+                    v = z3.IntVal(int(var.value[0]))
                 case "list":
-                    v = z3.IntVal(len(CR.concrete_variables[str(j)].value[0]))
+                    v = z3.IntVal(len(var.value[0]))
                 case (
                     "address"
                     | "bytes"
@@ -118,8 +123,14 @@ def process_run():
                     | "signature"
                     | "string"
                 ):
-                    v = z3.StringVal(CR.concrete_variables[str(j)].value[0])
-                case "bool" | "or" | "option" | "pair":
+                    v = z3.StringVal(var.value[0])
+                case "bool":
+                    v = z3.BoolVal(var.value[0].lower() == "true")
+                case "or":
+                    v = z3.BoolVal(var.or_value == "Left")
+                case "option":
+                    v = z3.BoolVal(var.option_value == "None")
+                case "pair":
                     continue
                 case _:
                     raise _types.CustomException(
@@ -195,7 +206,8 @@ def process_run():
                     case _:
                         r.concrete_variables[j.name()].value = [str(s.model()[CR.symbolic_variables[j.name()]])]  # type: ignore
             r.ephemeral_predicates.clear()
-            r.ephemeral_variables.clear()
+            r.ephemeral_concrete_variables.clear()
+            r.ephemeral_symbolic_variables.clear()
             r.temporary_predicates.clear()
             r.conditional_operands.clear()
             r.symbolic_variables = copy.deepcopy(CR.symbolic_variables)
