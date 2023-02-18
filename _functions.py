@@ -613,27 +613,17 @@ def applyCOMPARE(
                 z3.IntVal(output.value[0]),
             )
         )
-        CR.temporary_predicates[output.name] = []
-        op = (
-            operator.lt
-            if output.value[0] == "-1"
-            else operator.gt
-            if output.value[0] == "1"
-            else operator.eq
-        )
-        CR.temporary_predicates[output.name].append(
-            op(
-                CPC.input_variables[parameters[0].name]
-                if parameters[0].name in CPC.input_variables
-                else CR.ephemeral_variables[parameters[0].name]
-                if parameters[0].name in CR.ephemeral_variables
-                else parameters[0].value[0],  # type: ignore
-                CPC.input_variables[parameters[1].name]
-                if parameters[1].name in CPC.input_variables
-                else CR.ephemeral_variables[parameters[1].name]
-                if parameters[1].name in CR.ephemeral_variables
-                else parameters[1].value[0],  # type: ignore
-            )
+        CR.conditional_operands[output.name] = (
+            CPC.input_variables[parameters[0].name]
+            if parameters[0].name in CPC.input_variables
+            else CR.ephemeral_variables[parameters[0].name]
+            if parameters[0].name in CR.ephemeral_variables
+            else parameters[0].value[0],  # type: ignore
+            CPC.input_variables[parameters[1].name]
+            if parameters[1].name in CPC.input_variables
+            else CR.ephemeral_variables[parameters[1].name]
+            if parameters[1].name in CR.ephemeral_variables
+            else parameters[1].value[0],  # type: ignore
         )
     return output
 
@@ -1038,7 +1028,14 @@ def applyEQ(
         or parameters[0].name in CR.ephemeral_variables
     ):
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
-        if (
+        if CR.conditional_operands.get(parameters[0].name):
+            CR.temporary_predicates[output.name] = [
+                operator.eq(
+                    CR.conditional_operands[parameters[0].name][0],
+                    CR.conditional_operands[parameters[0].name][1],
+                )
+            ]
+        elif (
             CR.temporary_predicates[parameters[0].name]
             and len(CR.temporary_predicates[parameters[0].name]) != 0
         ):
@@ -1105,21 +1102,17 @@ def applyGE(
         or parameters[0].name in CR.ephemeral_variables
     ):
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
-        if (
+        if CR.conditional_operands.get(parameters[0].name):
+            CR.temporary_predicates[output.name] = [
+                operator.ge(
+                    CR.conditional_operands[parameters[0].name][0],  # type: ignore
+                    CR.conditional_operands[parameters[0].name][1],  # type: ignore
+                )
+            ]
+        elif (
             CR.temporary_predicates[parameters[0].name]
             and len(CR.temporary_predicates[parameters[0].name]) != 0
         ):
-            for i in range(len(CR.temporary_predicates[parameters[0].name])):
-                if str(CR.temporary_predicates[parameters[0].name][i].decl()) == ">":
-                    children = CR.temporary_predicates[parameters[0].name][i].children()
-                    CR.temporary_predicates[parameters[0].name][i] = operator.ge(
-                        children[0], children[1]  # type: ignore
-                    )
-                elif str(CR.temporary_predicates[parameters[0].name][i].decl()) == "<":
-                    children = CR.temporary_predicates[parameters[0].name][i].children()
-                    CR.temporary_predicates[parameters[0].name][i] = operator.le(
-                        children[0], children[1]  # type: ignore
-                    )
             CR.temporary_predicates[output.name] = CR.temporary_predicates[
                 parameters[0].name
             ]
@@ -1171,7 +1164,14 @@ def applyGT(
         or parameters[0].name in CR.ephemeral_variables
     ):
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
-        if (
+        if CR.conditional_operands.get(parameters[0].name):
+            CR.temporary_predicates[output.name] = [
+                operator.gt(
+                    CR.conditional_operands[parameters[0].name][0],  # type: ignore
+                    CR.conditional_operands[parameters[0].name][1],  # type: ignore
+                )
+            ]
+        elif (
             CR.temporary_predicates[parameters[0].name]
             and len(CR.temporary_predicates[parameters[0].name]) != 0
         ):
@@ -1250,10 +1250,11 @@ def applyIF(
                         e.add(te)
                 if len(var_set & e) > 0:
                     temp_set.add(i)
-            local_ephemeral_predicates.extend(temp_set)
-            CR.ephemeral_predicates = list(
-                set(CR.ephemeral_predicates).difference(temp_set)
-            )
+            if temp_set:
+                local_ephemeral_predicates.extend(temp_set)
+                CR.ephemeral_predicates = list(
+                    set(CR.ephemeral_predicates).difference(temp_set)
+                )
         else:
             for i in CR.ephemeral_predicates:
                 e = set()
@@ -1266,10 +1267,11 @@ def applyIF(
                         e.add(te)
                 if CR.ephemeral_variables[parameters[0].name] in e:
                     temp_set.add(i)
-            local_ephemeral_predicates.extend(temp_set)
-            CR.ephemeral_predicates = list(
-                set(CR.ephemeral_predicates).difference(temp_set)
-            )
+            if temp_set:
+                local_ephemeral_predicates.extend(temp_set)
+                CR.ephemeral_predicates = list(
+                    set(CR.ephemeral_predicates).difference(temp_set)
+                )
         CR.path_constraints.append(deepcopy(CPC))
         if branch == 0:
             CR.path_constraints[-1].predicates.append(
@@ -1543,21 +1545,17 @@ def applyLE(
         or parameters[0].name in CR.ephemeral_variables
     ):
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
-        if (
+        if CR.conditional_operands.get(parameters[0].name):
+            CR.temporary_predicates[output.name] = [
+                operator.le(
+                    CR.conditional_operands[parameters[0].name][0],  # type: ignore
+                    CR.conditional_operands[parameters[0].name][1],  # type: ignore
+                )
+            ]
+        elif (
             CR.temporary_predicates[parameters[0].name]
             and len(CR.temporary_predicates[parameters[0].name]) != 0
         ):
-            for i in range(len(CR.temporary_predicates[parameters[0].name])):
-                if str(CR.temporary_predicates[parameters[0].name][i].decl()) == "<":
-                    children = CR.temporary_predicates[parameters[0].name][i].children()
-                    CR.temporary_predicates[parameters[0].name][i] = operator.le(
-                        children[0], children[1]  # type: ignore
-                    )
-                elif str(CR.temporary_predicates[parameters[0].name][i].decl()) == ">":
-                    children = CR.temporary_predicates[parameters[0].name][i].children()
-                    CR.temporary_predicates[parameters[0].name][i] = operator.ge(
-                        children[0], children[1]  # type: ignore
-                    )
             CR.temporary_predicates[output.name] = CR.temporary_predicates[
                 parameters[0].name
             ]
@@ -1750,7 +1748,14 @@ def applyLT(
         or parameters[0].name in CR.ephemeral_variables
     ):
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
-        if (
+        if CR.conditional_operands.get(parameters[0].name):
+            CR.temporary_predicates[output.name] = [
+                operator.lt(
+                    CR.conditional_operands[parameters[0].name][0],  # type: ignore
+                    CR.conditional_operands[parameters[0].name][1],  # type: ignore
+                )
+            ]
+        elif (
             CR.temporary_predicates[parameters[0].name]
             and len(CR.temporary_predicates[parameters[0].name]) != 0
         ):
@@ -1931,7 +1936,14 @@ def applyNEQ(
         or parameters[0].name in CR.ephemeral_variables
     ):
         CR.ephemeral_variables[output.name] = create_symbolic_variable(output)
-        if (
+        if CR.conditional_operands.get(parameters[0].name):
+            CR.temporary_predicates[output.name] = [
+                operator.ne(
+                    CR.conditional_operands[parameters[0].name][0],
+                    CR.conditional_operands[parameters[0].name][1],
+                )
+            ]
+        elif (
             CR.temporary_predicates[parameters[0].name]
             and len(CR.temporary_predicates[parameters[0].name]) != 0
         ):
@@ -2851,106 +2863,3 @@ def popmultiple(d: Deque, c: int) -> List:
     for _ in range(c):
         o.append(d.pop())
     return o[::-1]
-
-
-def process_ifmacro(l: List[Dict[str, Any]]) -> None:
-    # TODO: definitely the most inefficient-looking part of the codebase
-    CR = _variables.CURRENT_RUN
-    CPC = CR.current_path_constraint
-    op = _variables.OPS[l[1 if l[0]["prim"] == "COMPARE" else 0]["prim"]]
-    local_ephemeral_predicates = []
-    track = False
-    checked_variables = [
-        CR.symbolic_variables[CR.stack[-1].name]
-        if CR.stack[-1].name in CPC.input_variables
-        else CR.ephemeral_variables[CR.stack[-1].name]
-        if CR.stack[-1].name in CR.ephemeral_variables
-        else CR.stack[-1].value[0]
-    ]
-    # Some preprocessing
-    if l[0]["prim"] == "COMPARE":
-        checked_variables.append(
-            CR.symbolic_variables[CR.stack[-2].name]
-            if CR.stack[-2].name in CPC.input_variables
-            else CR.ephemeral_variables[CR.stack[-2].name]
-            if CR.stack[-2].name in CR.ephemeral_variables
-            else CR.stack[-2].value[0]
-        )
-        # Execute COMPARE here
-        ins_c = l.pop(0)
-        step = process_instruction(ins_c, CR.stack)
-        if step is not None:
-            CR.steps.append(step)
-    else:  # EQ, GE, etc...
-        checked_variables.append("0")
-    if (
-        len(
-            [
-                True
-                for x in checked_variables
-                if str(x) in CPC.input_variables or str(x) in CR.ephemeral_variables
-            ]
-        )
-        > 0
-    ):
-        track = True
-        CPC.predicates.append(op(checked_variables[-2], checked_variables[-1]))
-        if (
-            len([True for x in checked_variables if str(x) in CR.ephemeral_variables])
-            > 0
-        ):
-            add_set = set()
-            for i in CR.ephemeral_predicates:
-                e = set()
-                q = deque(i.children())
-                while len(q) != 0:
-                    te = q.popleft()
-                    if hasattr(te, "children") and len(te.children()) != 0:
-                        q.extend(te.children())
-                    if z3.is_const(te) and te.decl().kind() == z3.Z3_OP_UNINTERPRETED:
-                        e.add(te)
-                if any([True if x in e else False for x in checked_variables]):
-                    add_set.add(i)
-            local_ephemeral_predicates.extend(add_set)
-            # CPC.predicates.extend(add)
-            CR.ephemeral_predicates = list(
-                set(CR.ephemeral_predicates).difference(add_set)
-            )
-    ins_op, ins_if = l[0], l[1]
-    # Execute EQ, GE, etc. here
-    step = process_instruction(ins_op, CR.stack)
-    if step is not None:
-        CR.steps.append(step)
-    if track:
-        # Now we know which branch will be executed
-        # forking & negating the current path constraint
-        CR.path_constraints.append(deepcopy(CPC))
-        if CR.stack[-1].value[0].lower() == "true":
-            CR.path_constraints[-1].predicates.append(
-                z3.Not(CR.path_constraints[-1].predicates.pop())
-            )
-        else:
-            CPC.predicates.append(z3.Not(CPC.predicates.pop()))
-        # Adding all ephemeral predicates and repeating fork & negate
-        for i in local_ephemeral_predicates:
-            CPC.predicates.append(i)
-            CR.path_constraints.append(deepcopy(CPC))
-            CR.path_constraints[-1].predicates.append(
-                z3.Not(CR.path_constraints[-1].predicates.pop())
-            )
-    # Now processing the actual IF
-    _ = process_instruction(ins_if, CR.stack)
-
-
-# def process_unpairmacro(l: List[Dict[str, Any]]) -> None:
-#     CR = _variables.CURRENT_RUN
-#     # Process DUP
-#     dup = l.pop(0)
-#     step = process_instruction(dup, CR.stack, unpair_flag=True)
-#     if step is not None and "IF" not in dup["prim"]:
-#         CR.steps.append(step)
-#     # Process the rest
-#     for i in flatten(l):
-#         step = process_instruction(i, CR.stack)
-#         if step is not None and "IF" not in i["prim"]:
-#             CR.steps.append(step)

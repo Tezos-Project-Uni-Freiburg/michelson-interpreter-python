@@ -197,6 +197,7 @@ def process_run():
             r.ephemeral_predicates.clear()
             r.ephemeral_variables.clear()
             r.temporary_predicates.clear()
+            r.conditional_operands.clear()
             r.symbolic_variables = copy.deepcopy(CR.symbolic_variables)
             r.path_constraints.append(_types.PathConstraint())
             r.path_constraints[0].input_variables = copy.deepcopy(r.symbolic_variables)

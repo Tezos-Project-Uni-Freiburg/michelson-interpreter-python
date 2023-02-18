@@ -5,7 +5,7 @@ from collections import deque
 from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Deque, Dict, List, Set
+from typing import Any, Deque, Dict, List, Set, Tuple
 
 import z3
 
@@ -151,6 +151,9 @@ class Run:
     temporary_predicates: Dict[str, List[z3.ExprRef]] = field(
         default_factory=dict, init=False
     )
+    conditional_operands: Dict[
+        str, Tuple[z3.ExprRef | int | str | bool, z3.ExprRef | int | str | bool]
+    ] = field(default_factory=dict, init=False)
     creation_predicates: List[Any] = field(default_factory=list, init=False)
     executed: bool = field(default=False, init=False)
 
