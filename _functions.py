@@ -1868,7 +1868,7 @@ def applyMAP(
     new_list = []
     for _ in range(len(parameters[0].value[0])):
         stack.append(parameters[0].value[0].pop(0))
-        for j in instruction["args"][::-1]:
+        for j in flatten(instruction["args"][::-1]):
             step = process_instruction(j, stack)
             if "IF" not in j.prim:
                 _variables.CURRENT_RUN.steps.append(step)
@@ -2503,20 +2503,10 @@ def applySOME(
     instruction: Dict[str, Any], parameters: Deque[Data], stack: Deque[Data]
 ) -> Data:
     # Γ  ⊢  SOME  ::  ty1  :  A  ⇒  option   ty1  :  A
-    if "args" not in instruction:
-        raise CustomException(
-            "type of option is not declared",
-            {"instruction": instruction, "parameters": parameters},
-        )
-    elif instruction["args"][0]["prim"] != parameters[0].prim:
-        raise CustomException(
-            "stack value and option type doesn't match",
-            {"instruction": instruction, "parameters": parameters},
-        )
     output = Data("option", [parameters[0]])
     parameters[0].parent = output.name
     output.option_value = "Some"
-    output.option_type.append(instruction["args"][0].get("prim"))
+    output.option_type.append(parameters[0].prim)
     return output
 
 
@@ -2665,7 +2655,7 @@ def applyUPDATE(
                     "value type does not match",
                     {"instruction": instruction, "parameters": parameters},
                 )
-            parameters[2].value[0][parameters[0].value[0]] = parameters[1]
+            parameters[2].value[0][parameters[0].value[0]] = parameters[1].value[0]
         elif parameters[0].value[0] in parameters[2].value[0]:
             parameters[2].value[0].pop(parameters[0].value[0])
     return parameters[2]
