@@ -1469,8 +1469,8 @@ def applyIF_NONE(
                             ):
                                 e.add(te)
                         if (
-                            CPC.input_variables.get(i.name)
-                            or CR.ephemeral_symbolic_variables.get(i.name)
+                            i.name in CPC.input_variables
+                            or i.name in CR.ephemeral_symbolic_variables
                         ) in e:
                             temp_set.add(j)
                     if temp_set:
@@ -1710,7 +1710,7 @@ def applyLOOP(
                         q.extend(te.children())
                     if z3.is_const(te) and te.decl().kind() == z3.Z3_OP_UNINTERPRETED:
                         e.add(te)
-                if CR.ephemeral_symbolic_variables.get(top.name) in e:
+                if CR.ephemeral_symbolic_variables[top.name] in e:
                     add.add(i)
             CPC.predicates.extend(add)
             CR.ephemeral_predicates = list(set(CR.ephemeral_predicates) - add)
@@ -2784,9 +2784,9 @@ def parseBIG_MAP(args, value) -> Data:
                     )
             case _:
                 raise CustomException("not implemented", {"args": args, "value": value})
-        output.value[0][r[1]] = globals()["parse" + output.value_type.upper()](
-            args[1], r[2]
-        )
+        output.value[0][re.sub(r'^"(.+(?="$))"$', r"\1", r[1])] = globals()[
+            "parse" + output.value_type.upper()
+        ](args[1], r[2])
     return output
 
 
@@ -2868,18 +2868,12 @@ def parseMAP(args, value) -> Data:
                 else:
                     k = kv[1]
             case ("string" | "address" | "key" | "key_hash"):
-                k = re.match(r'^"(.+(?="$))"$', kv[1])
-                if k is None:
-                    raise CustomException(
-                        "input doesn't match with the specified types",
-                        {"args": args, "value": value},
-                    )
-                elif k[1] in output.value[0]:
+                if re.sub(r'^"(.+(?="$))"$', r"\1", kv[1]) in output.value[0]:
                     raise CustomException(
                         "key already present in map", {"args": args, "value": value}
                     )
                 else:
-                    k = k[1]
+                    k = re.sub(r'^"(.+(?="$))"$', r"\1", kv[1])
             case _:
                 raise CustomException("not implemented", {"args": args, "value": value})
         output.value[0][k] = globals()["parse" + output.value_type.upper()](
@@ -2994,7 +2988,7 @@ def parseSET(args, value) -> Data:
 
 def parseSIGNATURE(args, value) -> Data:
     # unfortunately no validation as of now
-    return Data("signature", [value])
+    return Data("signature", [re.sub(r'^"(.+(?="$))"$', r"\1", value)])
 
 
 def parseSTRING(args, value) -> Data:
