@@ -1,8 +1,48 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
-// https://github.com/microsoft/vscode-dev-containers/tree/v0.245.2/containers/python-3
+// https://github.com/microsoft/vscode-dev-containers/tree/main/containers/python-3
 {
-	"image": "ghcr.io/berkaycagir/michelson-interpreter-python-container:latest",
-	"mounts": [
-		"source=${localEnv:HOME}/GitHub/michelson-test-scripts,target=/workspaces/michelson-test-scripts,type=bind,consistency=cached"
-	]
+	"build": {
+		"dockerfile": "Dockerfile"
+	},
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"python.defaultInterpreterPath": "/usr/local/bin/python",
+				"python.linting.enabled": true,
+				"python.linting.pylintEnabled": false,
+				"python.formatting.autopep8Path": "/usr/local/py-utils/bin/autopep8",
+				"python.formatting.blackPath": "/usr/local/py-utils/bin/black",
+				"python.formatting.yapfPath": "/usr/local/py-utils/bin/yapf",
+				"python.linting.banditPath": "/usr/local/py-utils/bin/bandit",
+				"python.linting.flake8Path": "/usr/local/py-utils/bin/flake8",
+				"python.linting.mypyPath": "/usr/local/py-utils/bin/mypy",
+				"python.linting.pycodestylePath": "/usr/local/py-utils/bin/pycodestyle",
+				"python.linting.pydocstylePath": "/usr/local/py-utils/bin/pydocstyle",
+				"python.linting.pylintPath": "/usr/local/py-utils/bin/pylint",
+				"git.enableCommitSigning": true,
+				"python.formatting.blackArgs": [
+					"--target-version",
+					"py310"
+				]
+			},
+			"extensions": [
+				"ms-python.python",
+				"ms-python.vscode-pylance",
+				"baking-bad.michelson"
+			]
+		}
+	},
+	"postCreateCommand": "if [ -r requirements.txt ]; then (pip3 install --user -r requirements.txt); fi ; if [ -d ext ]; then (git submodule update --remote --init --recursive ; cd ext/michelson-parser-wrapper ; npm install ; rm -f package-lock.json ; cd ../..); fi",
+	"remoteUser": "vscode",
+	"features": {
+		"ghcr.io/devcontainers/features/common-utils:1": {
+			"installZsh": false,
+			"installOhMyZsh": false,
+			"username": "none"
+		},
+		"ghcr.io/devcontainers/features/node:1": {
+			"version": "18"
+		},
+		"ghcr.io/devcontainers/features/git:1": {}
+	}
 }
