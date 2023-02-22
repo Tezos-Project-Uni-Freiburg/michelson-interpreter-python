@@ -18,7 +18,7 @@ import z3
 import _functions
 import _types
 import _variables
-from _functions import flatten, initialize, process_instruction
+from _functions import flatten, generate_variable, initialize, process_instruction
 
 
 def excepthook(type, value, traceback):
@@ -166,45 +166,8 @@ def process_run():
                 }
             )
             # Value update
-            for j in s.model():
-                if j.name() not in CR.symbolic_variables:  # type: ignore
-                    continue
-                if j.name().startswith("sv_"):  # type: ignore
-                    match j.name().split("_")[1]:  # type: ignore
-                        case "amount" | "balance":
-                            r.current_state.amount = s.model()[CR.symbolic_variables[j.name()]].as_long()  # type: ignore
-                            r.current_state.balance = s.model()[CR.symbolic_variables[j.name()]].as_long()  # type: ignore
-                        case "now":
-                            r.current_state.timestamp = s.model()[CR.symbolic_variables[j.name()]].as_long()  # type: ignore
-                        case "sender" | "source":
-                            r.current_state.address = str(s.model()[CR.symbolic_variables[j.name()]])  # type: ignore
-                        case _:
-                            continue
-                match j.name().split("_")[0]:  # type: ignore
-                    case "list":
-                        if s.model()[CR.symbolic_variables[j.name()]].as_long() == 0:  # type: ignore
-                            r.concrete_variables[j.name()].value = [[]]  # type: ignore
-                        else:
-                            # TODO: implement value generation for lists
-                            ...
-                    case "or":
-                        if str(s.model()[CR.symbolic_variables[j.name()]]).lower() == "true":  # type: ignore
-                            r.concrete_variables[j.name()].or_value = "Left"  # type: ignore
-                        else:
-                            r.concrete_variables[j.name()].or_value = "Right"  # type: ignore
-                    case "option":
-                        if str(s.model()[CR.symbolic_variables[j.name()]]).lower() == "true":  # type: ignore
-                            r.concrete_variables[j.name()].option_value = "None"  # type: ignore
-                            for k in r.concrete_variables[j.name()].value:  # type: ignore
-                                r.concrete_variables.pop(k.name)
-                                r.symbolic_variables.pop(k.name)
-                            r.concrete_variables[j.name()].value.clear()  # type: ignore
-                        else:
-                            r.concrete_variables[j.name()].option_value = "Some"  # type: ignore
-                    case "pair":
-                        continue
-                    case _:
-                        r.concrete_variables[j.name()].value = [str(s.model()[CR.symbolic_variables[j.name()]])]  # type: ignore
+            generate_variable(s.model(), r)
+            # Cleanup
             r.ephemeral_predicates.clear()
             r.ephemeral_concrete_variables.clear()
             r.ephemeral_symbolic_variables.clear()

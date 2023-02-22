@@ -11,13 +11,14 @@ from datetime import datetime
 from functools import reduce
 from hashlib import blake2b, sha256, sha512
 from math import trunc
+from types import NoneType
 from typing import Any, Deque, Dict, List
 
 import z3
 from base58 import b58encode_check
 
 import _variables
-from _types import CustomException, Data, Delta, Step, create_symbolic_variable
+from _types import CustomException, Data, Delta, Run, Step, create_symbolic_variable
 
 
 def initialize(
@@ -3031,6 +3032,51 @@ def flatten(l: List) -> List:
         else:
             o.append(i)
     return o
+
+
+def generate_variable(model: z3.ModelRef, r: Run):
+    CR = _variables.CURRENT_RUN
+    for j in model:
+        if not isinstance(j, NoneType) and j.__str__() not in CR.symbolic_variables:
+            continue
+        name = j.__str__()
+        value = model[j]
+        if name.startswith("sv_"):
+            match name.split("_")[1]:
+                case "amount" | "balance" if isinstance(value, z3.IntNumRef):
+                    r.current_state.amount = value.as_long()
+                    r.current_state.balance = value.as_long()
+                case "now" if isinstance(value, z3.IntNumRef):
+                    r.current_state.timestamp = value.as_long()
+                case "sender" | "source" if isinstance(value, z3.SeqRef):
+                    r.current_state.address = value.as_string()
+                case _:
+                    continue
+        match name.split("_")[0]:  # type: ignore
+            case "list" if isinstance(value, z3.IntNumRef):
+                if value.as_long() == 0:
+                    r.concrete_variables[name].value = [[]]
+                else:
+                    # TODO: implement value generation for lists
+                    ...
+            case "or" if isinstance(value, z3.BoolRef):
+                if value.__bool__():
+                    r.concrete_variables[name].or_value = "Left"
+                else:
+                    r.concrete_variables[name].or_value = "Right"
+            case "option" if isinstance(value, z3.BoolRef):
+                if value.__bool__():
+                    r.concrete_variables[name].option_value = "None"
+                    for k in r.concrete_variables[name].value:
+                        r.concrete_variables.pop(k.name)
+                        r.symbolic_variables.pop(k.name)
+                    r.concrete_variables[name].value.clear()
+                else:
+                    r.concrete_variables[name].option_value = "Some"
+            case "pair":
+                continue
+            case _:
+                r.concrete_variables[name].value = [value.__str__()]
 
 
 def popmultiple(d: Deque, c: int) -> List:
