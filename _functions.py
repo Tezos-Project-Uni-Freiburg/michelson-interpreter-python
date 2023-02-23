@@ -2906,7 +2906,7 @@ def parseOPTION(args, value) -> Data:
 def parseOR(args, value) -> Data:
     # Currently no parameter type check is being done
     params = re.match(r"\s*\(\s*(?:(Left|Right)\s+(.+))\s*\)\s*", value)
-    output = Data("or", [])
+    output = Data("or")
     if params is None:
         raise CustomException(
             "input doesn't match with the specified types",
@@ -2925,6 +2925,7 @@ def parseOR(args, value) -> Data:
 
 def parsePAIR(args, value) -> Data:
     output = Data("pair")
+    output.pair_type = [x.get("prim") for x in args]
     params = re.match(
         r"\s*\(\s*Pair\s+((?:\(.+\))|(?:.+?))\s+((?:\(.+\))|(?:.+?))\s*\)\s*", value
     )

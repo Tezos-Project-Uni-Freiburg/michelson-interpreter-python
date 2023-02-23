@@ -34,6 +34,7 @@ class Data:
     or_value: str = field(default_factory=str, init=False)
     or_type: List[str] = field(default_factory=list, init=False)
     list_type: str = field(default_factory=str, init=False)
+    pair_type: List[str] = field(default_factory=list, init=False)
 
     def __post_init__(self) -> None:
         match self.prim:
