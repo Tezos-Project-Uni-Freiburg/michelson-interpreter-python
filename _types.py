@@ -194,7 +194,7 @@ def create_symbolic_variable(d: Data) -> z3.ExprRef:
             return z3.String(d.name)
         case "bool" | "or" | "option" | "pair" | "unit":
             return z3.Bool(d.name)
-        case "map":
+        case "map" | "big_map":
             # TODO: maps in z3
             return None  # type: ignore
         case _:

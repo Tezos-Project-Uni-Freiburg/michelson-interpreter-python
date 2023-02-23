@@ -179,13 +179,13 @@ def process_run():
             r.current_path_constraint = r.path_constraints[0]
             r.variable_names = {
                 x: {
-                    int(y.split("_")[1])
+                    int(y.rsplit("_", 1)[1])
                     for y in r.current_path_constraint.input_variables.keys()
                     if y.startswith(x)
                 }
                 for x in set(
                     [
-                        z.split("_")[0]
+                        z.rsplit("_", 1)[0]
                         for z in r.current_path_constraint.input_variables.keys()
                         if not z.startswith("sv_")
                     ]

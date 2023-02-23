@@ -2742,14 +2742,15 @@ def parseBIG_MAP(args, value) -> Data:
     output.value_type = args[1].get("prim")
 
     params = re.match(
-        r"\s*\{\s*((?:Elt\s+.+\s+.+\s*;\s*)+(?:Elt\s+.+\s+.+\s*)?)\}\s*", value
+        r"\s*(\()?\s*\{\s*((?:Elt\s+.+\s+.+\s*;\s*)+(?:Elt\s+.+\s+.+\s*)?)\}\s*(?(1)\)|)?\s*",
+        value,
     )
     if params is None:
         raise CustomException(
             "input doesn't match with the specified types",
             {"args": args, "value": value},
         )
-    kv = [x.strip() for x in params[1].split(";")]
+    kv = [x.strip() for x in params[2].split(";")]
     if kv[len(kv) - 1] == "":
         kv.pop()
     for i in kv:
@@ -2830,14 +2831,15 @@ def parseMAP(args, value) -> Data:
     output.value_type = args[1].get("prim")
 
     params = re.match(
-        r"\s*\{\s*((?:Elt\s+.+\s+.+\s*;\s*)+(?:Elt\s+.+\s+.+\s*)?)\}\s*", value
+        r"\s*(\()?\s*\{\s*((?:Elt\s+.+\s+.+\s*;\s*)+(?:Elt\s+.+\s+.+\s*)?)\}\s*(?(1)\)|)?\s*",
+        value,
     )
     if params is None:
         raise CustomException(
             "input doesn't match with the specified types",
             {"args": args, "value": value},
         )
-    kv_list = [x.strip() for x in params[1].split(";")]
+    kv_list = [x.strip() for x in params[2].split(";")]
     if kv_list[len(kv_list) - 1] == "":
         kv_list.pop()
     for i in kv_list:
@@ -3042,7 +3044,7 @@ def generate_variable(model: z3.ModelRef, r: Run):
         name = j.__str__()
         value = model[j]
         if name.startswith("sv_"):
-            match name.split("_")[1]:
+            match name.rsplit("_", 1)[1]:
                 case "amount" | "balance" if isinstance(value, z3.IntNumRef):
                     r.current_state.amount = value.as_long()
                     r.current_state.balance = value.as_long()
@@ -3052,7 +3054,7 @@ def generate_variable(model: z3.ModelRef, r: Run):
                     r.current_state.address = value.as_string()
                 case _:
                     continue
-        match name.split("_")[0]:  # type: ignore
+        match name.rsplit("_", 1)[0]:  # type: ignore
             case "list" if isinstance(value, z3.IntNumRef):
                 if value.as_long() == 0:
                     r.concrete_variables[name].value = [[]]
