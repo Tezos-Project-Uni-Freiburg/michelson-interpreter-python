@@ -43,6 +43,6 @@
             "version": "18"
         },
         "ghcr.io/devcontainers/features/git:1": {},
-        "ghcr.io/tailscale/codespace": {}
+        "ghcr.io/tailscale/codespace/tailscale:1.0.3": {}
     }
 }
