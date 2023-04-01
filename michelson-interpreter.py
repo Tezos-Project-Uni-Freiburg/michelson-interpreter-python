@@ -332,8 +332,8 @@ def main(
         michelson_interpreter(copy.deepcopy(code))
     print(
         json.dumps(
-            {
-                _variables.EXECUTED_RUNS.index(x): {
+            [
+                {
                     "creation_predicates": x.creation_predicates,
                     "resulting_predicates": x.current_path_constraint.predicates,
                     "sat": x.current_path_constraint.satisfiable,
@@ -342,7 +342,7 @@ def main(
                     else None,
                 }
                 for x in _variables.EXECUTED_RUNS
-            },
+            ],
             default=lambda x: str(x)
             if isinstance(x, z3.Z3PPObject) and x.use_pp()
             else x,
