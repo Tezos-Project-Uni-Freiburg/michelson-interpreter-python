@@ -5,6 +5,6 @@
   ],
   "baseBranches": [
     "main",
-    "concolic.*"
+    "/concolic.*/"
   ]
 }
